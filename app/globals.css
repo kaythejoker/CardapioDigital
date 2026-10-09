@@ -1,0 +1,145 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Tokens do produto (spec, "Prompt 1 — Visual").
+ * --brand vem de resellers.primary_color e é sobrescrito em tempo de execução
+ * no layout de cada restaurante; os valores aqui são o padrão.
+ */
+:root {
+  --brand: #e0552b;
+  --brand-foreground: #ffffff;
+
+  --bg: #faf6f0;
+  --surface: #ffffff;
+  --text: #1e1a16;
+  --muted-text: #6f665c;
+  --line: #ece4d9;
+  --subtle: #f3ece2;
+
+  --success: #2f7d5b;
+  --warning: #e3a008;
+  --danger: #d64545;
+
+  /* Mapeamento para as variáveis do shadcn/ui */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --secondary: var(--subtle);
+  --secondary-foreground: var(--text);
+  --muted: var(--subtle);
+  --muted-foreground: var(--muted-text);
+  --accent: var(--subtle);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--brand);
+  --chart-1: var(--brand);
+  --chart-2: #e8a07a;
+  --chart-3: var(--success);
+  --chart-4: var(--warning);
+  --chart-5: var(--muted-text);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--subtle);
+  --sidebar-accent-foreground: var(--text);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brand);
+
+  --radius: 0.875rem; /* 14px: botões */
+}
+
+/* Tema escuro quente da cozinha (KDS). */
+.dark {
+  --bg: #141110;
+  --surface: #221d19;
+  --text: #f6efe6;
+  --muted-text: #b3a797;
+  --line: #3a322b;
+  --subtle: #2c2621;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-surface: var(--surface);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --font-sans: var(--font-jakarta);
+  --font-heading: var(--font-fraunces);
+  --font-mono: ui-monospace, monospace;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-card: 20px;
+  --radius-button: 14px;
+
+  /* Sombras suaves e quentes */
+  --shadow-soft: 0 1px 2px rgb(30 26 22 / 0.04), 0 8px 24px rgb(120 72 32 / 0.08);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
