@@ -4,6 +4,8 @@
 
 2026-10-09 · @Jokers
 
+Atualização autorizada em 2026-10-10: dois projetos publicados (painel e cardápio público), personalização de cores por restaurante, gestor e cozinha priorizados para desktop. O usuário confirmou um PIN por comanda aberta, aceitando vários pedidos até o fechamento. Essas decisões prevalecem sobre os prompts originais abaixo.
+
 Sistema white label de cardápio digital em que o cliente pede pelo celular, direto da mesa, e o pedido chega priorizado na cozinha. Este documento traz a spec do MVP e, no final, os dois prompts: um para construir a aplicação e outro para gerar o visual no ChatGPT.
 
 ## Visão geral e papéis
@@ -168,15 +170,18 @@ São 20 telas no MVP. As do cliente e da cozinha são as que mais pesam na perce
 - Cliente: mobile-first, fotos de comida em destaque, botões grandes, fluxo de pedido em no máximo 3 toques depois do PIN.
 - Cozinha: legível a 1,5 metro de distância, tema escuro, alvos de toque grandes (dedos sujos ou de luva).
 - Gestor e revendedor: painel limpo e claro, focado em tarefas.
-- A cor principal vem da marca do revendedor. Restaurante pode ter foto de capa e logo próprios.
+- A cor principal herda a marca do revendedor, mas o gestor pode sobrescrevê-la para seu restaurante. Nome, logo, banner e fundo do cardápio também são personalizáveis.
 
 ## Arquitetura e dados
 
-Uma única aplicação Next.js na Vercel atende todos os papéis, com um único banco Supabase. Cada linha do banco pertence a um restaurante, e o isolamento entre restaurantes é garantido por RLS no Postgres.
+Dois projetos Vercel usam o mesmo código Next.js e um banco Supabase: `cardapio-digital` atende a equipe e a revenda; `cardapio-cliente` atende o público por QR. `APP_SURFACE` define a superfície de cada publicação. As APIs administrativas ficam indisponíveis no projeto público; QR codes e links apontam para sua origem própria. O isolamento entre restaurantes é garantido por RLS no Postgres.
 
 ```mermaid
 flowchart LR
-    A[Cliente<br/>celular, sem login] --> N[Next.js na Vercel<br/>páginas + rotas de API]
+    A[Cliente<br/>celular, sem login] --> C[Cardápio público<br/>cardapio-cliente]
+    C --> DB
+    C --> ST
+    N[Painel do restaurante<br/>cardapio-digital]
     B[Equipe<br/>garçom, cozinha, gestor] --> N
     R[Revendedor] --> N
     N --> DB[(Supabase Postgres<br/>com RLS)]

@@ -5,6 +5,14 @@ import { publicEnv } from "@/lib/supabase/env";
 
 /** Renova a sessão da equipe a cada requisição para /app. */
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const mode = process.env.APP_SURFACE;
+  if (mode === "customer" && path.startsWith("/app")) {
+    return NextResponse.redirect(new URL(path + request.nextUrl.search, process.env.NEXT_PUBLIC_ADMIN_URL!));
+  }
+  if (mode === "customer" && /^\/api\/(auth|manage|staff|team|revenda|upload|qr)(\/|$)/.test(path)) return new NextResponse(null, {status:404});
+  if (mode === "admin" && /^\/[^/]+\/m\/[^/]+/.test(path)) return NextResponse.redirect(new URL(path + request.nextUrl.search, process.env.NEXT_PUBLIC_MENU_URL!));
+  if (!path.startsWith("/app")) return NextResponse.next();
   let response = NextResponse.next({ request });
   const env = publicEnv();
 
@@ -38,5 +46,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*"],
+  matcher: ["/app/:path*", "/api/:path*", "/:slug/m/:qrToken"],
 };

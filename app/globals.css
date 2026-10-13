@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./product.css";
+@import "./panels.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -68,6 +70,22 @@
   --muted-text: #b3a797;
   --line: #3a322b;
   --subtle: #2c2621;
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --secondary: var(--subtle);
+  --secondary-foreground: var(--text);
+  --muted: var(--subtle);
+  --muted-foreground: var(--muted-text);
+  --border: var(--line);
+  --input: var(--line);
+}
+
+.brand-scope {
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --ring: var(--brand);
 }
 
 @theme inline {

@@ -1,0 +1,11 @@
+.env*
+!.env.example
+tmp
+test-results
+playwright-report
+audit-local.json
+docs/referencias-visuais
+tests
+.git
+
+output

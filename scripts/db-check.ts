@@ -209,6 +209,55 @@ async function main() {
   check("PIN volta a ficar livre depois de fechar",
     (await fails("insert into tabs (restaurant_id, table_id, pin) values ($1, $2, '4821')", [BRASA, mesa2])) === null);
 
+  // Server RPC security, pricing, limits and atomicity.
+  const qr = (await db.query<{ qr_token: string }>("select qr_token from tables where id=$1", [mesa2])).rows[0].qr_token;
+  const pinRpc = (pin: string, device = "device-1", hash = "session-test") => db.query<{ result: { status?: number; tab_id?: string } }>("select public.verify_table_pin('brasa-bistro',$1,$2,$3,$4) as result", [qr,pin,device,hash]);
+  for (let i=1;i<=5;i++) {
+    const res = await pinRpc("9999");
+    check(`PIN errado ${i}: resposta correta`, res.rows[0].result.status === (i===5 ? 429 : 401));
+  }
+  check("PIN correto também bloqueado durante 5 minutos", (await pinRpc("4821")).rows[0].result.status === 429);
+  await db.exec("update pin_attempts set locked_until=now()-interval '1 second' where device_id='device-1'");
+  check("PIN libera após expirar bloqueio", Boolean((await pinRpc("4821")).rows[0].result.tab_id));
+  const food = (await db.query<{id:string; price_cents:number}>("select id,price_cents from menu_items where restaurant_id=$1 and name='Caipirinha de limão'", [BRASA])).rows[0];
+  const request = "b0000000-0000-4000-8000-000000000001";
+  const chosen = (await db.query<{id:string;price_cents:number}>("select distinct on (g.id) m.id,m.price_cents from modifiers m join modifier_groups g on g.id=m.group_id where g.menu_item_id=$1 and g.required order by g.id,m.price_cents",[food.id])).rows;
+  const lines = JSON.stringify([{item_id:food.id,quantity:2,note:"Pouco gelo",modifier_ids:chosen.map(m=>m.id),price_cents:1}]);
+  const submit = (hash:string, body=lines) => db.query<{result:{id:string;total_cents:number}}>("select public.submit_table_order('brasa-bistro',$1,$2,$3,$4::jsonb) as result", [qr,hash,request,body]);
+  check("pedido sem sessão é recusado", (await fails("select public.submit_table_order('brasa-bistro',$1,'invalid',$2,$3::jsonb)", [qr,request,lines])) !== null);
+  const submitted = (await submit("session-test")).rows[0].result;
+  check("preço vem do banco e ignora preço enviado", submitted.total_cents===(food.price_cents+chosen.reduce((sum,m)=>sum+m.price_cents,0))*2);
+  check("retry usa o mesmo pedido", (await submit("session-test")).rows[0].result.id===submitted.id);
+  check("snapshot preserva nome e observação", (await count("select 1 from order_items where order_id=$1 and name_snapshot='Caipirinha de limão' and note='Pouco gelo'", [submitted.id]))===1);
+  await db.query("update menu_items set sold_out=true where id=$1",[food.id]);
+  check("esgotado é recusado na transação", (await fails("select public.submit_table_order('brasa-bistro',$1,'session-test','b0000000-0000-4000-8000-000000000002',$2::jsonb)",[qr,lines]))!==null);
+  await asUser(null,async()=>check("anon não pode executar RPC de PIN",(await fails("select public.verify_table_pin('brasa-bistro',$1,'4821','x','y')",[qr]))!==null));
+  await asUser(users.garcomBrasa,async()=>check("garçom não inicia preparo",(await fails("update orders set status='em_preparo' where id=$1",[submitted.id]))!==null));
+  await db.query("update tabs set status='closed' where table_id=$1 and status='open'",[mesa2]);
+  check("fechamento impede replay de pedido", (await fails("select public.submit_table_order('brasa-bistro',$1,'session-test',$2,$3::jsonb)",[qr,request,lines]))!==null);
+  await asUser(users.garcomBrasa,async()=> {
+    const opened = await db.query<{id:string}>("select id from public.open_table($1)",[mesa1]);
+    check("RPC de abertura funciona com RLS do garçom",Boolean(opened.rows[0]?.id));
+    check("RPC não abre duas comandas na mesma mesa",(await fails("select public.open_table($1)",[mesa1]))!==null);
+  });
+  const newRestaurant="c0000000-0000-4000-8000-000000000001";
+  await asUser(users.revenda,async()=>{
+    const result=await db.query<{id:string}>("insert into restaurants(id,reseller_id,name,slug) values($1,$2,'Restaurante novo','restaurante-novo') returning id",[newRestaurant,RESELLER]);
+    check("revenda cria restaurante com INSERT RETURNING",result.rows[0]?.id===newRestaurant);
+  });
+  const category=(await db.query<{id:string}>("select id from categories where restaurant_id=$1 limit 1",[BRASA])).rows[0].id;
+  const itemInput={category_id:category,name:"Teste RPC",description:"Teste",price_cents:4290,photo_url:null,prep_minutes:12,active:true,featured:false,position:99,groups:[{name:"Ponto",required:true,min_select:1,max_select:1,position:0,modifiers:[{name:"Ao ponto",price_cents:100,position:0}]}]};
+  let createdItem="";
+  await asUser(users.gestorBrasa,async()=>{
+    const result=await db.query<{id:string}>("select public.save_menu_item($1,null,$2::jsonb) as id",[BRASA,JSON.stringify(itemInput)]);createdItem=result.rows[0].id;
+    check("gestor cria item com adicionais atomically",Boolean(createdItem)&&(await count("select 1 from modifier_groups where menu_item_id=$1",[createdItem]))===1);
+    check("gestor não salva item de outro restaurante",(await fails("select public.save_menu_item($1,null,$2::jsonb)",[CANTINA,JSON.stringify(itemInput)]))!==null);
+    const ids=(await db.query<{id:string}>("select id from categories where restaurant_id=$1 order by position",[BRASA])).rows.map(c=>c.id).reverse();
+    await db.query("select public.reorder_menu($1,'categories',$2::uuid[])",[BRASA,ids]);
+    check("gestor reordena categorias",(await db.query<{id:string}>("select id from categories where restaurant_id=$1 order by position limit 1",[BRASA])).rows[0].id===ids[0]);
+  });
+  await asUser(users.garcomBrasa,async()=>check("garçom não executa gestão do cardápio",(await fails("select public.save_menu_item($1,null,$2::jsonb)",[BRASA,JSON.stringify(itemInput)]))!==null));
+
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTudo certo.");
   process.exitCode = failures ? 1 : 0;
 }
