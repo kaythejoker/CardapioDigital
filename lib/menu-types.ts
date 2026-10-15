@@ -49,9 +49,12 @@ export type CartLine = {
   quantity: number;
   note: string;
   modifier_ids: string[];
+  /** Dividido igualmente com quem está na comanda. */
+  shared: boolean;
 };
 export type CustomerOrder = {
   id: string;
+  guest_id: string | null;
   status: string;
   prep_minutes: number;
   total_cents: number;
@@ -63,6 +66,7 @@ export type CustomerOrder = {
     quantity: number;
     note: string;
     modifiers_snapshot: { name: string }[];
+    shared: boolean;
   }[];
 };
 export const money = (cents: number) =>

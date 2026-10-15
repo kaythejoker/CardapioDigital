@@ -19,3 +19,30 @@
 .table-pin-digits{display:flex;justify-content:center;gap:12px;margin:16px 0}.table-pin-digits span{display:grid;place-items:center;font-size:36px;font-weight:600;border:1px solid #e5d8c5;background:#f9f3e9;border-radius:12px;width:57px;height:67px}.table-order-summary{margin-top:25px;border-top:1px solid #eadfce;padding-top:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:#8b775e}.table-order-summary button{border:1px solid #d8b692;padding:9px 12px;border-radius:8px;color:#a26b37}.table-sheet>header h2{font-weight:650}.table-sheet .my-6 b{font-family:var(--font-fraunces);font-size:26px;color:#c16030}
 @media(min-width:1200px) and (max-width:1599px){.admin-content{padding:28px 32px}.admin-header{margin-bottom:23px}.stat-card{padding:17px 15px}.stat-card strong{font-size:28px}.dashboard-panel{padding:20px 22px}.best-item{margin-bottom:11px}.hourly-chart{height:160px;margin-top:20px}.dashboard-tables button{padding:9px 4px;font-size:22px}.dashboard-panel>header{margin-bottom:16px}.queue-table td{padding:11px 8px}.dashboard-columns{gap:20px}.dashboard-stats{margin-bottom:20px}}
 .tab-total-bar{position:fixed;bottom:15px;left:15px;right:15px;max-width:546px;margin:auto;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:15px 17px;background:#f4eddf;border:1px solid #e8dac5;border-radius:17px;box-shadow:0 4px 20px #59432612}.tab-total-bar>div{display:flex;flex-direction:column;gap:4px}.tab-total-bar span{font-size:12px;color:#8b7355}.tab-total-bar b{font-family:var(--font-fraunces);font-size:25px;color:var(--brand)}.tab-total-bar button{display:flex;align-items:center;gap:6px;padding:11px 13px;border:1px solid var(--brand);border-radius:12px;font-size:12px;font-weight:600;color:var(--brand)}
+.pin-name{display:block;text-align:left;margin:4px 0 0}
+.pin-name span{display:block;font-size:13px;font-weight:600;margin-bottom:8px}
+.pin-name input{width:100%;border:1px solid #ddd2c1;border-radius:13px;background:#fcf9f3;padding:14px 15px;font-size:16px;outline:none}
+.pin-name input:focus{border-color:#d8663b;box-shadow:0 0 0 2px #d8663b16}
+.cart-shared{display:flex;align-items:flex-start;gap:11px;margin-top:14px;padding:11px 12px;border-radius:12px;background:#f6eedf;font-size:13px;font-weight:600;cursor:pointer}
+.cart-shared small{display:block;font-size:11px;font-weight:400;color:#8b7d6b;margin-top:3px}
+.tab-person+.tab-person{border-top:1px solid #eae0d2;padding-top:24px}
+.tab-person-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+.tab-person-header h2{font-family:var(--font-fraunces);font-size:22px;font-weight:650;letter-spacing:-.5px}
+.tab-person-header small{display:block;font-size:11px;color:#8b7d6b;margin-top:4px}
+.tab-person-header>div:last-child{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.tab-person-header b{font-family:var(--font-fraunces);font-size:21px;color:var(--brand);white-space:nowrap}
+.tab-person-status{border-radius:999px;padding:3px 9px;font-size:10px;font-weight:600;white-space:nowrap}
+.tab-person-status.paid{background:#e4efe7;color:#2F7D5B}
+.tab-person-status.due{background:#f6eedf;color:#a3845f}
+.tab-total-bar small{font-size:11px;color:#8b7355}
+.table-split{margin-top:22px;border-top:1px solid #eadfce;padding-top:18px}
+.table-split h3{font-family:var(--font-fraunces);font-size:19px;font-weight:650;margin-bottom:8px}
+.table-split-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f0e7da}
+.table-split-row b{display:block;font-size:15px}
+.table-split-row small{display:block;font-size:11px;color:#8b775e;margin-top:2px}
+.table-split-amount{font-weight:650;white-space:nowrap}
+.table-split-pay{border-radius:10px;background:var(--brand);color:var(--brand-foreground);padding:9px 12px;font-size:12px;font-weight:600;white-space:nowrap}
+.table-split-pay:disabled{opacity:.45}
+.table-split-done{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.table-split-done button{font-size:11px;color:#8b775e;text-decoration:underline}
+.table-split-badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;background:#e4efe7;color:#2F7D5B;padding:5px 10px;font-size:12px;font-weight:600}

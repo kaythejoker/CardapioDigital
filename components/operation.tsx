@@ -24,6 +24,7 @@ import {
   type CustomerOrder,
   type MenuItem,
 } from "@/lib/menu-types";
+import { splitTab, type SplitGuest } from "@/lib/split";
 
 export type StaffOrder = CustomerOrder & {
   tab_id: string;
@@ -55,6 +56,7 @@ export type OperationData = {
     opened_at: string;
     status: string;
   }[];
+  guests: (SplitGuest & { tab_id: string })[];
   orders: StaffOrder[];
   items: (MenuItem & {
     sold_out: boolean;
@@ -143,6 +145,18 @@ export function Operation({ role }: { role: "cozinha" | "garcom" }) {
             void refresh();
           },
         )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "tab_guests",
+            filter: `restaurant_id=eq.${id}`,
+          },
+          () => {
+            void refresh();
+          },
+        )
         .subscribe((status) =>
           setConnection(status === "SUBSCRIBED" ? "Ao vivo" : "Reconectando…"),
         );
@@ -225,6 +239,9 @@ export function Operation({ role }: { role: "cozinha" | "garcom" }) {
   const selected = data.tables.find((t) => t.id === selectedTable);
   const tab = data.tabs.find((t) => t.table_id === selectedTable);
   const tableOrders = data.orders.filter((o) => o.tab_id === tab?.id);
+  const tableGuests = data.guests.filter((g) => g.tab_id === tab?.id);
+  const split = splitTab(tableGuests, tableOrders);
+  const unpaid = split.people.filter((p) => !p.settled && p.balance_cents > 0);
   const actionStyle =
     "rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-50";
   return (
@@ -542,6 +559,8 @@ export function Operation({ role }: { role: "cozinha" | "garcom" }) {
                               cancelado: "Cancelado",
                             }[o.status]
                           }
+                          {tableGuests.some((g) => g.id === o.guest_id) &&
+                            ` • ${tableGuests.find((g) => g.id === o.guest_id)!.name}`}
                         </b>
                         <b>{money(o.total_cents)}</b>
                       </div>
@@ -549,6 +568,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" }) {
                         <p key={i.id} className="mt-2 text-sm">
                           {i.quantity}× {i.name_snapshot}
                           {i.note && ` • ${i.note}`}
+                          {i.shared && " • dividido com a mesa"}
                         </p>
                       ))}
                       {o.status === "pronto" && (
@@ -586,6 +606,63 @@ export function Operation({ role }: { role: "cozinha" | "garcom" }) {
                     </article>
                   ))}
                 </div>
+                {split.people.length > 0 && (
+                  <div className="table-split">
+                    <h3>Divisão da conta</h3>
+                    {split.people.map((person) => {
+                      const guestId = person.id;
+                      return (
+                        <div key={guestId ?? "sem-nome"} className="table-split-row">
+                          <div>
+                            <b>{person.name}</b>
+                            <small>
+                              {person.shared_cents > 0 &&
+                                `Inclui ${money(person.shared_cents)} dividido. `}
+                              {person.paid_cents !== null &&
+                                !person.settled &&
+                                `Já pagou ${money(person.paid_cents)}.`}
+                            </small>
+                          </div>
+                          <span className="table-split-amount">
+                            {money(person.settled ? person.due_cents : person.balance_cents)}
+                          </span>
+                          {guestId &&
+                            (person.settled ? (
+                              <span className="table-split-done">
+                                <span className="table-split-badge">
+                                  <Check size={14} /> Pago
+                                </span>
+                                <button
+                                  disabled={busy}
+                                  aria-label={`Desfazer pagamento de ${person.name}`}
+                                  onClick={() =>
+                                    void command({ action: "paid", guest_id: guestId, paid_cents: null })
+                                  }
+                                >
+                                  desfazer
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                disabled={busy || person.due_cents === 0}
+                                className="table-split-pay"
+                                aria-label={`Marcar ${person.name} como pago`}
+                                onClick={() =>
+                                  void command({
+                                    action: "paid",
+                                    guest_id: guestId,
+                                    paid_cents: person.due_cents,
+                                  })
+                                }
+                              >
+                                Marcar pago
+                              </button>
+                            ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="my-6 flex justify-between text-lg">
                   <span>Total consumido</span>
                   <b>
@@ -598,6 +675,15 @@ export function Operation({ role }: { role: "cozinha" | "garcom" }) {
                 </div>
                 {closing ? (
                   <div className="rounded-2xl bg-secondary p-4">
+                    {unpaid.length > 0 && (
+                      <p className="mb-3 font-semibold text-destructive">
+                        Ainda falta pagar:{" "}
+                        {unpaid
+                          .map((p) => `${p.name} (${money(p.balance_cents)})`)
+                          .join(", ")}
+                        .
+                      </p>
+                    )}
                     <p>
                       Confirmar fechamento? O código e as sessões dos clientes
                       serão invalidados.

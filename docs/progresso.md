@@ -1,4 +1,16 @@
-# Progresso do MVP — atualizado em 2026-10-13
+# Progresso do MVP — atualizado em 2026-10-15
+
+## Divisão da conta por pessoa — 2026-10-15
+
+Pedido do usuário: todos da mesa usam o mesmo QR e o mesmo PIN, mas cada um entra com o próprio nome, vê os pedidos da mesa separados por pessoa e paga só a sua parte. Escolhas do usuário: todos veem a mesa inteira separada por pessoa; item pode ser marcado como "Dividir com a mesa"; o garçom marca quem já pagou. Juntar mesas ficou registrado na Fase 2 da spec.
+
+- Migration `20261015120000_divisao_conta.sql`: tabela `tab_guests` (nome único por comanda, sem diferenciar maiúsculas; `paid_cents`/`paid_at`), `guest_id` em `tab_sessions` e `orders`, `shared` em `order_items`. RLS: equipe lê; só garçom e gestor registram pagamento, só com a comanda aberta, e não alteram o nome. `verify_table_pin` ganhou `p_name` opcional; `cancel_table_order` só cancela pedidos da própria pessoa.
+- Compatível com a versão anterior: o banco aceita PIN sem nome; a API exige o nome, e sessões antigas sem nome pedem nome e PIN de novo. Pedidos antigos aparecem como "Sem nome".
+- Regra de divisão em `lib/split.ts`: item dividido é repartido igualmente entre quem já estava na comanda no momento do pedido; centavos que sobram ficam com quem pediu. Se a pessoa pedir algo depois de marcada como paga, o saldo reabre.
+- Cliente: nome na tela do PIN (lembrado no aparelho), opção "Dividir com a mesa" no carrinho e "Comanda da mesa" separada por pessoa, com "Sua parte" e total da mesa.
+- Garçom: nome em cada pedido, seção "Divisão da conta" com "Marcar pago"/"desfazer" e aviso de quem ainda falta pagar ao fechar.
+- Validação local: typecheck, lint, 10 testes unitários (6 novos da divisão) e `db:check` com 15 verificações novas.
+- Publicado em 15/10: migration aplicada com `npm run db:deploy` (o script agora lê `SUPABASE_ACCESS_TOKEN` do `.env.local`, ignorado pelo Git e pela Vercel) e deploy de produção dos dois projetos Vercel. E2E de pedido e de segurança aprovados em produção; pedido visível na cozinha em 1220 ms. O E2E de gestão já falhava antes desta mudança porque procura o título "Bom dia, …", que saiu do painel do gestor no redesenho.
 
 ## Sincronização do repositório — 2026-10-13
 

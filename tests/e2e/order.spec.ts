@@ -103,6 +103,7 @@ test("pedido completo, Realtime e revogação de sessão", async ({ browser }) =
       .first()
       .click();
     await customer.getByRole("button", { name: /^Adicionar •/ }).click();
+    await customer.getByLabel("Seu nome").fill("Ana E2E");
     await customer.getByLabel("Código de 4 dígitos").fill(tab!.pin);
     await customer
       .getByRole("button", { name: "Confirmar código", exact: true })
@@ -141,6 +142,18 @@ test("pedido completo, Realtime e revogação de sessão", async ({ browser }) =
       .getByRole("button", { name: "Acompanhar minha comanda", exact: true })
       .click();
     await expect(customer.getByText("Entregue", { exact: true })).toBeVisible();
+    await expect(
+      customer.getByRole("heading", { name: "Você • Ana E2E", exact: true }),
+    ).toBeVisible();
+    await waiter
+      .getByRole("button", { name: "Marcar Ana E2E como pago", exact: true })
+      .click();
+    await expect(
+      waiter.getByRole("button", {
+        name: "Desfazer pagamento de Ana E2E",
+        exact: true,
+      }),
+    ).toBeVisible();
     await waiter
       .getByRole("button", { name: "Fechar comanda", exact: true })
       .click();

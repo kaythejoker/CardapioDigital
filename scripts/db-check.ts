@@ -258,6 +258,51 @@ async function main() {
   });
   await asUser(users.garcomBrasa,async()=>check("garçom não executa gestão do cardápio",(await fails("select public.save_menu_item($1,null,$2::jsonb)",[BRASA,JSON.stringify(itemInput)]))!==null));
 
+  // Divisão da conta por pessoa ----------------------------------------------
+  const mesa3 = await mesa("3");
+  const qr3 = (await db.query<{ qr_token: string }>("select qr_token from tables where id=$1", [mesa3])).rows[0].qr_token;
+  const tab3 = (await db.query<{ id: string }>("insert into tabs (restaurant_id, table_id, pin) values ($1, $2, '7310') returning id", [BRASA, mesa3])).rows[0].id;
+  await db.query("update menu_items set sold_out=false where id=$1", [food.id]);
+  const enter = (name: string | null, hash: string) =>
+    db.query<{ result: { tab_id?: string; guest_id?: string | null } }>(
+      "select public.verify_table_pin('brasa-bistro',$1,'7310',$2,$3,$4) as result", [qr3, `device-${hash}`, hash, name]);
+  const ana = (await enter("  Ana   Paula ", "ana-1")).rows[0].result.guest_id;
+  const bia = (await enter("Bia", "bia-1")).rows[0].result.guest_id;
+  const anaAgain = (await enter("ana paula", "ana-2")).rows[0].result.guest_id;
+  check("PIN com nome cria a pessoa na comanda", Boolean(ana) && Boolean(bia) && ana !== bia);
+  check("mesmo nome em outro celular é a mesma pessoa", anaAgain === ana);
+  check("nome é gravado sem espaços extras", (await count("select 1 from tab_guests where id=$1 and name='Ana Paula'", [ana])) === 1);
+  check("PIN sem nome continua aceito (versão anterior do app)", (await enter(null, "old-1")).rows[0].result.guest_id === null);
+  const sharedLines = JSON.stringify([{ item_id: food.id, quantity: 1, note: "", modifier_ids: chosen.map((m) => m.id), shared: true }]);
+  const anaOrder = (await db.query<{ result: { id: string } }>(
+    "select public.submit_table_order('brasa-bistro',$1,'ana-1','b0000000-0000-4000-8000-000000000010',$2::jsonb) as result", [qr3, sharedLines])).rows[0].result.id;
+  check("pedido fica no nome de quem pediu", (await count("select 1 from orders where id=$1 and guest_id=$2", [anaOrder, ana])) === 1);
+  check("item dividido com a mesa é gravado", (await count("select 1 from order_items where order_id=$1 and shared", [anaOrder])) === 1);
+  check("pedido com 'shared' inválido é recusado", (await fails(
+    "select public.submit_table_order('brasa-bistro',$1,'ana-1','b0000000-0000-4000-8000-000000000011',$2::jsonb)",
+    [qr3, JSON.stringify([{ item_id: food.id, quantity: 1, note: "", modifier_ids: chosen.map((m) => m.id), shared: "sim" }])])) !== null);
+  const cancel = (hash: string) =>
+    db.query<{ ok: boolean }>("select public.cancel_table_order('brasa-bistro',$1,$2,$3) as ok", [qr3, hash, anaOrder]);
+  check("outra pessoa não cancela o pedido da Ana", (await cancel("bia-1")).rows[0].ok === false);
+  check("Ana cancela o próprio pedido de outro celular", (await cancel("ana-2")).rows[0].ok === true);
+  await asUser(users.garcomBrasa, async () => {
+    const paid = await db.query<{ paid_at: string | null }>("update tab_guests set paid_cents=1500 where id=$1 returning paid_at", [bia]);
+    check("garçom registra o pagamento e grava paid_at", paid.rows[0]?.paid_at != null);
+    check("garçom não muda o nome da pessoa", (await fails("update tab_guests set name='Outra' where id=$1", [bia])) !== null);
+  });
+  await asUser(users.cozinhaBrasa, async () => {
+    const res = await db.query("update tab_guests set paid_cents=0 where id=$1", [bia]);
+    check("cozinha não registra pagamento", res.affectedRows === 0);
+  });
+  await asUser(users.gestorCantina, async () => {
+    check("gestor da Cantina não vê pessoas das comandas do Brasa", (await count("select 1 from tab_guests")) === 0);
+  });
+  await asUser(null, async () => {
+    check("cliente anônimo não lê as pessoas da comanda", (await fails("select * from tab_guests")) !== null);
+  });
+  await db.query("update tabs set status='closed' where id=$1", [tab3]);
+  check("pagamento não muda depois de fechar a comanda", (await fails("update tab_guests set paid_cents=null where id=$1", [bia])) !== null);
+
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTudo certo.");
   process.exitCode = failures ? 1 : 0;
 }

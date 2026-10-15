@@ -15,7 +15,11 @@ const paramsSchema = z.object({
   qrToken: z.string().regex(/^[a-f0-9]{32}$/),
 });
 const command = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("pin"), pin: z.string().regex(/^\d{4}$/) }),
+  z.object({
+    action: z.literal("pin"),
+    pin: z.string().regex(/^\d{4}$/),
+    name: z.string().trim().min(1).max(40),
+  }),
   z.object({
     action: z.literal("order"),
     request_id: z.uuid(),
@@ -26,6 +30,7 @@ const command = z.discriminatedUnion("action", [
           quantity: z.number().int().min(1).max(99),
           note: z.string().max(200).default(""),
           modifier_ids: z.array(z.uuid()).max(50),
+          shared: z.boolean().default(false),
         }),
       )
       .min(1)
@@ -67,6 +72,7 @@ export async function POST(
         p_pin: input.data.pin,
         p_device: hashToken(`${device}:${ip}`),
         p_hash: hashToken(token),
+        p_name: input.data.name,
       });
       if (error) throw error;
       if (data.error)
@@ -132,19 +138,29 @@ export async function GET(
         { error: "A comanda foi fechada ou sua sessão expirou" },
         { status: 401 },
       );
-    const data = await readAll((start, end) =>
+    const [data, guests] = await Promise.all([
+      readAll((start, end) =>
+        session.db
+          .from("orders")
+          .select(
+            "id,guest_id,status,prep_minutes,total_cents,created_at,order_items(id,name_snapshot,unit_price_cents,quantity,note,modifiers_snapshot,shared)",
+          )
+          .eq("tab_id", session.tab.id)
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(start, end),
+      ),
       session.db
-        .from("orders")
-        .select(
-          "id,status,prep_minutes,total_cents,created_at,order_items(id,name_snapshot,unit_price_cents,quantity,note,modifiers_snapshot)",
-        )
+        .from("tab_guests")
+        .select("id,name,created_at,paid_cents")
         .eq("tab_id", session.tab.id)
-        .order("created_at", { ascending: false })
-        .order("id")
-        .range(start, end),
-    );
+        .order("created_at"),
+    ]);
+    if (guests.error) throw guests.error;
     return Response.json(
       {
+        me: session.guestId,
+        guests: guests.data,
         orders: data,
         total_cents: data
           .filter((o) => o.status !== "cancelado")

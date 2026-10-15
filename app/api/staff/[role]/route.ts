@@ -61,7 +61,7 @@ export async function GET(
       ctx.db
         .from("orders")
         .select(
-          "id,tab_id,status,prep_minutes,total_cents,pinned,created_at,started_at,ready_at,delivered_at,tabs!inner(status),order_items(id,name_snapshot,quantity,note,unit_price_cents,modifiers_snapshot)",
+          "id,tab_id,guest_id,status,prep_minutes,total_cents,pinned,created_at,started_at,ready_at,delivered_at,tabs!inner(status),order_items(id,name_snapshot,quantity,note,unit_price_cents,modifiers_snapshot,shared)",
         )
         .eq("restaurant_id", id)
         .eq("tabs.status", "open")
@@ -92,7 +92,17 @@ export async function GET(
       .eq("restaurant_id", id)
       .order("position"),
   ]);
-  if (results.some((r) => r.error))
+  const guests = results[1].data?.length
+    ? await ctx.db
+        .from("tab_guests")
+        .select("id,tab_id,name,created_at,paid_cents")
+        .in(
+          "tab_id",
+          results[1].data.map((t) => t.id),
+        )
+        .order("created_at")
+    : { data: [], error: null };
+  if (results.some((r) => r.error) || guests.error)
     return Response.json(
       { error: "Não foi possível carregar a operação" },
       { status: 503 },
@@ -105,6 +115,7 @@ export async function GET(
       restaurant_id: id,
       tables: results[0].data,
       tabs: results[1].data,
+      guests: guests.data,
       orders: results[2].data,
       items: results[3].data,
       settings: results[4].data,
@@ -131,6 +142,11 @@ const commands = z.discriminatedUnion("action", [
     action: z.literal("sold_out"),
     item_id: z.uuid(),
     sold_out: z.boolean(),
+  }),
+  z.object({
+    action: z.literal("paid"),
+    guest_id: z.uuid(),
+    paid_cents: z.number().int().min(0).max(100_000_000).nullable(),
   }),
 ]);
 export async function POST(
@@ -193,6 +209,14 @@ export async function POST(
       .from("orders")
       .update({ pinned: cmd.pinned })
       .eq("id", cmd.order_id)
+      .eq("restaurant_id", restaurant.data)
+      .select("id")
+      .maybeSingle();
+  else if (cmd.action === "paid")
+    result = await ctx.db
+      .from("tab_guests")
+      .update({ paid_cents: cmd.paid_cents })
+      .eq("id", cmd.guest_id)
       .eq("restaurant_id", restaurant.data)
       .select("id")
       .maybeSingle();

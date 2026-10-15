@@ -56,11 +56,11 @@ O PIN é o que impede alguém de outra mesa, ou de fora do restaurante, de pedir
 
 1. Escaneia o QR code da mesa e cai no cardápio já identificado com a mesa ("Mesa 12").
 2. Navega pelo cardápio livremente, sem PIN.
-3. Ao adicionar o primeiro item ou finalizar o pedido, o sistema pede o PIN de 4 dígitos.
+3. Ao adicionar o primeiro item ou finalizar o pedido, o sistema pede o nome da pessoa e o PIN de 4 dígitos. Todos da mesa usam o mesmo QR e o mesmo PIN; cada um entra com o próprio nome.
 4. Escolhe adicionais, quantidade e observações ("sem cebola") em cada item.
 5. Revisa o carrinho e envia. Pode enviar quantos pedidos quiser na mesma comanda.
 6. Acompanha o status de cada pedido: recebido, em preparo, pronto, entregue.
-7. Vê o consumo total da comanda.
+7. Vê a comanda da mesa separada por pessoa, com a sua parte e o total da mesa. No carrinho, pode marcar um item como "Dividir com a mesa": o valor é dividido igualmente entre quem já está na comanda.
 
 **Fluxo do garçom**
 
@@ -68,7 +68,7 @@ O PIN é o que impede alguém de outra mesa, ou de fora do restaurante, de pedir
 2. Passa o PIN ao cliente, falando ou mostrando na tela.
 3. Recebe aviso quando um pedido da mesa fica pronto.
 4. Marca como entregue.
-5. Fecha a comanda quando o cliente paga. O PIN deixa de valer na hora.
+5. Vê quanto cada pessoa deve e marca "pago" conforme cada uma acerta a sua parte. Fecha a comanda quando todos pagam (o sistema avisa quem ainda falta). O PIN deixa de valer na hora.
 6. Se precisar, gera um PIN novo para a mesma comanda (ex.: PIN vazou).
 
 **Fluxo da cozinha**
@@ -218,14 +218,15 @@ O cliente nunca fala direto com o banco: tudo que ele faz passa por rotas do ser
 | `restaurant_members` | user_id, restaurant_id, role (manager, waiter, kitchen) |
 | `tables` | id, restaurant_id, label, qr_token, active |
 | `tabs` (comandas) | id, restaurant_id, table_id, pin, status (open, closed), opened_by, opened_at, closed_at |
-| `tab_sessions` | id, tab_id, token_hash, created_at, expires_at |
+| `tab_guests` (pessoas da comanda) | id, restaurant_id, tab_id, name, paid_cents, paid_at, created_at |
+| `tab_sessions` | id, tab_id, guest_id, token_hash, created_at, expires_at |
 | `pin_attempts` | device_id, restaurant_id, failed_count, locked_until |
 | `categories` | id, restaurant_id, name, position, active |
 | `menu_items` | id, restaurant_id, category_id, name, description, price_cents, photo_url, prep_minutes, active, sold_out, position |
 | `modifier_groups` | id, menu_item_id, name, required, min_select, max_select, position |
 | `modifiers` | id, group_id, name, price_cents, position |
-| `orders` | id, restaurant_id, tab_id, status, prep_minutes, pinned, total_cents, created_at, started_at, ready_at, delivered_at, cancelled_at |
-| `order_items` | id, order_id, menu_item_id, name_snapshot, unit_price_cents, quantity, note, modifiers_snapshot (jsonb) |
+| `orders` | id, restaurant_id, tab_id, guest_id, status, prep_minutes, pinned, total_cents, created_at, started_at, ready_at, delivered_at, cancelled_at |
+| `order_items` | id, order_id, menu_item_id, name_snapshot, unit_price_cents, quantity, note, modifiers_snapshot (jsonb), shared |
 | `kitchen_settings` | restaurant_id, mode (fifo, complexity, balanced), weight_wait, weight_complexity, max_wait_minutes |
 
 Todas as tabelas que têm `restaurant_id` recebem política RLS. Restrições no banco: uma comanda aberta por mesa e PIN único entre as comandas abertas do mesmo restaurante (índices únicos parciais).
@@ -237,8 +238,8 @@ O MVP cobre o ciclo completo de um pedido e o cadastro de restaurantes. O resto 
 | Fase | Entra |
 | --- | --- |
 | MVP | As 20 telas listadas acima: cardápio, PIN, pedido, fila da cozinha com as 3 regras, garçom, gestor, revendedor, QR codes |
-| Fase 2 | Chamar garçom pelo app, pedir a conta, status em tempo real para o cliente, importar cardápio por foto com IA, relatórios, resumo semanal no WhatsApp do dono |
-| Fase 3 | Pagamento pelo app (Pix), dividir conta, pesquisa de satisfação com envio para o Google, fidelidade, cardápio em outros idiomas |
+| Fase 2 | Chamar garçom pelo app, pedir a conta, status em tempo real para o cliente, importar cardápio por foto com IA, relatórios, resumo semanal no WhatsApp do dono, juntar mesas (o garçom une duas ou mais mesas numa só comanda, com o mesmo PIN, e o QR de qualquer uma delas funciona) |
+| Fase 3 | Pagamento pelo app (Pix), pesquisa de satisfação com envio para o Google, fidelidade, cardápio em outros idiomas |
 
 **Fora do escopo:** emissão de nota fiscal, integração com PDV ou caixa, impressão automática na cozinha, delivery.
 
@@ -262,7 +263,7 @@ As respostas mudam o modelo de dados ou o visual, então vale fechar com o Felip
 - [ ] **Nome e marca do produto:** qual o nome, a logo e a cor principal do Felipe? O prompt do visual usa uma marca de exemplo até isso chegar.
 - [ ] **Cozinha e bar separados:** bebidas vão para uma tela de bar e pratos para a cozinha? É comum e muda a fila (cada item precisa de um "setor").
 - [ ] **Taxa de serviço:** a comanda mostra os 10% do garçom no total? Opcional por restaurante?
-- [ ] **Mais de uma comanda por mesa:** mesas compartilhadas ou grupos que pagam separado precisam de comandas separadas na mesma mesa?
+- [x] **Mais de uma comanda por mesa:** resolvido em 15/10 com uma comanda por mesa dividida por pessoa (nome no PIN, itens divididos com a mesa, pagamento marcado pelo garçom). Juntar mesas ficou para a Fase 2.
 - [ ] **Acesso do garçom:** cada garçom tem login próprio, ou a equipe usa um código de acesso compartilhado por restaurante?
 - [ ] **Quem monta o cardápio:** o restaurante cadastra sozinho ou a equipe do Felipe faz a implantação? Isso define o quanto a importação por foto (fase 2) é urgente.
 - [ ] **Endereço do cardápio:** cada restaurante usa `marca.com.br/nome-do-restaurante` ou precisa de domínio próprio?

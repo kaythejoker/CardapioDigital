@@ -49,7 +49,7 @@ export async function customerSession(
   if (!token) return null;
   const { data: session, error } = await context.db
     .from("tab_sessions")
-    .select("tab_id")
+    .select("tab_id,guest_id")
     .eq("token_hash", hashToken(token))
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
@@ -62,5 +62,8 @@ export async function customerSession(
     .eq("table_id", context.table.id)
     .eq("status", "open")
     .maybeSingle();
-  return tab ? { ...context, tab, tokenHash: hashToken(token) } : null;
+  // Sessões anteriores à divisão por pessoa não têm nome: o cliente entra de novo.
+  return tab && session.guest_id
+    ? { ...context, tab, guestId: session.guest_id, tokenHash: hashToken(token) }
+    : null;
 }

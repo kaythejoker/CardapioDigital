@@ -33,6 +33,9 @@ import {
   type MenuData,
   type MenuItem,
 } from "@/lib/menu-types";
+import { splitTab, type SplitGuest } from "@/lib/split";
+
+const NAME_STORAGE = "comanda:name";
 
 export function Menu({
   slug,
@@ -59,10 +62,12 @@ export function Menu({
   const [note, setNote] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [pin, setPin] = useState("");
+  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
-  const [consumed, setConsumed] = useState(0);
+  const [guests, setGuests] = useState<SplitGuest[]>([]);
+  const [me, setMe] = useState<string | null>(null);
   const [estimate, setEstimate] = useState(0);
   const pendingRequest = useRef<string | null>(null);
   const cartReady = useRef(false);
@@ -123,6 +128,7 @@ export function Menu({
               quantity: z.number().int().min(1).max(99),
               note: z.string().max(200),
               modifier_ids: z.array(z.uuid()).max(50),
+              shared: z.boolean().default(false),
             }),
           )
           .max(50);
@@ -130,6 +136,7 @@ export function Menu({
           JSON.parse(localStorage.getItem(storage) || "[]"),
         );
         if (saved.success) setCart(saved.data);
+        setName(localStorage.getItem(NAME_STORAGE)?.slice(0, 40) ?? "");
       } catch {
         /* discard corrupt local cart */
       }
@@ -152,10 +159,12 @@ export function Menu({
         const data = await response.json();
         if (!response.ok) {
           setError(data.error);
+          if (response.status === 401) setScreen("pin");
           return;
         }
         setOrders(data.orders);
-        setConsumed(data.total_cents);
+        setGuests(data.guests);
+        setMe(data.me);
       } catch {
         setError("Sem conexão. Tentando atualizar sua comanda…");
       }
@@ -228,6 +237,7 @@ export function Menu({
       quantity,
       note,
       modifier_ids: modifiers,
+      shared: cart.find((l) => l.key === editing)?.shared ?? false,
     };
     setCart((previous) =>
       editing
@@ -263,6 +273,14 @@ export function Menu({
     setScreen("menu");
     setError("");
   };
+  const split = splitTab(guests, orders);
+  const people = split.people.toSorted(
+    (a, b) => Number(b.id === me) - Number(a.id === me),
+  );
+  const ordersOf = (id: string | null) =>
+    orders.filter(
+      (o) => (guests.some((g) => g.id === o.guest_id) ? o.guest_id : null) === id,
+    );
   const primary =
     "rounded-[14px] bg-primary px-5 py-4 font-semibold text-primary-foreground disabled:opacity-50";
   return (
@@ -501,23 +519,40 @@ export function Menu({
           <BrandMark className="pin-brand text-primary" />
           <h1 className="font-heading text-3xl">Digite o código da mesa</h1>
           <p className="my-4 text-muted-foreground">
-            Peça o código de 4 dígitos ao garçom. Ele garante que só a sua mesa
-            peça nesta comanda.
+            Peça o código de 4 dígitos ao garçom. Com o seu nome, cada pessoa
+            da mesa vê a sua parte da conta.
           </p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
-                await post({ action: "pin", pin });
+                await post({ action: "pin", pin, name: name.trim() });
+                try {
+                  localStorage.setItem(NAME_STORAGE, name.trim());
+                } catch {
+                  /* name is only a convenience */
+                }
                 setPin("");
                 await refresh();
                 setScreen(cart.length ? "cart" : "menu");
               });
             }}
           >
+            <label className="pin-name">
+              <span>Seu nome</span>
+              <input
+                autoFocus={!name}
+                required
+                maxLength={40}
+                autoComplete="given-name"
+                placeholder="Como te chamam na mesa?"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
             <div className="pin-input-wrap"><div className="pin-boxes" aria-hidden="true">{Array.from({length:4}, (_,i) => <span className={pin.length === i ? "active" : ""} key={i}>{pin[i] || ""}</span>)}</div><input
               aria-label="Código de 4 dígitos"
-              autoFocus
+              autoFocus={!!name}
               inputMode="none"
               autoComplete="one-time-code"
               maxLength={4}
@@ -552,7 +587,7 @@ export function Menu({
               )}
             </div>
             <button
-              disabled={busy || pin.length !== 4}
+              disabled={busy || pin.length !== 4 || !name.trim()}
               className={`${primary} pin-submit mt-6 w-full ${pin.length < 4 ? "invisible" : ""}`}
             >
               {busy ? "Conferindo…" : "Confirmar código"}
@@ -580,6 +615,26 @@ export function Menu({
                       .join(" • ")}
                   </p>
                   {line.note && <p className="my-2 text-sm">{line.note}</p>}
+                  <label className="cart-shared">
+                    <input
+                      type="checkbox"
+                      checked={line.shared}
+                      onChange={(e) => {
+                        const shared = e.target.checked;
+                        setCart((c) =>
+                          c.map((l) => (l.key === line.key ? { ...l, shared } : l)),
+                        );
+                        pendingRequest.current = null;
+                      }}
+                      className="h-5 w-5 accent-primary"
+                    />
+                    <span>
+                      Dividir com a mesa
+                      <small>
+                        O valor é dividido entre todos que já estão na comanda.
+                      </small>
+                    </span>
+                  </label>
                   <div className="mt-4 flex items-center justify-between">
                     <b>
                       {item
@@ -631,11 +686,12 @@ export function Menu({
                   action: "order",
                   request_id: pendingRequest.current,
                   items: cart.map(
-                    ({ item_id, quantity, note, modifier_ids }) => ({
+                    ({ item_id, quantity, note, modifier_ids, shared }) => ({
                       item_id,
                       quantity,
                       note,
                       modifier_ids,
+                      shared,
                     }),
                   ),
                 });
@@ -677,9 +733,31 @@ export function Menu({
       )}
       {screen === "tab" && (
         <section className="customer-tab p-5">
-          <h1 className="font-heading text-3xl">Minha comanda</h1><p className="tab-subtitle">Acompanhe seus pedidos e aproveite.</p>
-          <div className="space-y-4">
-            {orders.map((order) => (
+          <h1 className="font-heading text-3xl">Comanda da mesa</h1><p className="tab-subtitle">Cada pessoa vê o que pediu e a sua parte da conta.</p>
+          <div className="space-y-8">
+            {people.map((person) => (
+            <div key={person.id ?? "sem-nome"} className="tab-person">
+              <header className="tab-person-header">
+                <div>
+                  <h2>{person.id === me ? `Você • ${person.name}` : person.name}</h2>
+                  {person.shared_cents > 0 && (
+                    <small>Inclui {money(person.shared_cents)} de itens divididos</small>
+                  )}
+                </div>
+                <div>
+                  <b>{money(person.due_cents)}</b>
+                  {person.settled ? (
+                    <span className="tab-person-status paid">Pago</span>
+                  ) : person.paid_cents !== null ? (
+                    <span className="tab-person-status due">Falta {money(person.balance_cents)}</span>
+                  ) : null}
+                </div>
+              </header>
+              {!ordersOf(person.id).length && (
+                <p className="text-sm text-muted-foreground">Ainda não pediu nada.</p>
+              )}
+              <div className="space-y-4">
+            {ordersOf(person.id).map((order) => (
               <article key={order.id} className="customer-order rounded-[20px] bg-card p-5"><header><h2>{order.status === "entregue" ? "Pedido anterior" : "Pedido em andamento"}</h2><small>#{order.id.slice(0,5).toUpperCase()}</small></header>
                 <div className="mb-4 flex justify-between">
                   <span className="text-sm text-muted-foreground">
@@ -723,6 +801,7 @@ export function Menu({
                     <p className="text-sm text-muted-foreground">
                       {i.modifiers_snapshot.map((m) => m.name).join(" • ")}
                       {i.note && ` • ${i.note}`}
+                      {i.shared && " • Dividido com a mesa"}
                     </p></div><b>{money(i.unit_price_cents * i.quantity)}</b>
                   </div>
                 ))}
@@ -731,7 +810,7 @@ export function Menu({
                     Previsão: cerca de {order.prep_minutes} min
                   </p>
                 )}
-                {order.status === "recebido" && (
+                {order.status === "recebido" && order.guest_id === me && (
                   <button
                     disabled={busy}
                     className="mt-4 text-sm text-destructive underline"
@@ -745,7 +824,6 @@ export function Menu({
                               : x,
                           ),
                         );
-                        setConsumed((c) => c - order.total_cents);
                       })
                     }
                   >
@@ -754,8 +832,11 @@ export function Menu({
                 )}
               </article>
             ))}
+              </div>
+            </div>
+            ))}
           </div>
-          <div className="tab-total-bar"><div><span>Total consumido</span><b>{money(consumed)}</b></div><button onClick={back}><Plus size={17}/> Pedir mais</button></div>
+          <div className="tab-total-bar"><div><span>Sua parte</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>Total da mesa: {money(split.total_cents)}</small></div><button onClick={back}><Plus size={17}/> Pedir mais</button></div>
         </section>
       )}
       {selected && (

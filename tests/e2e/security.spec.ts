@@ -105,10 +105,10 @@ test("PIN, idempotência, snapshot, adicionais, esgotado e comanda fechada via A
     const wrongPin = pin === "9999" ? "9998" : "9999";
     for (let i = 0; i < 5; i++)
       expect(
-        (await post(wrong, { action: "pin", pin: wrongPin })).status(),
+        (await post(wrong, { action: "pin", pin: wrongPin, name: "Teste" })).status(),
       ).toBe(i === 4 ? 429 : 401);
-    expect((await post(wrong, { action: "pin", pin })).status()).toBe(429);
-    expect((await post(correct, { action: "pin", pin })).status()).toBe(200);
+    expect((await post(wrong, { action: "pin", pin, name: "Teste" })).status()).toBe(429);
+    expect((await post(correct, { action: "pin", pin, name: "Teste" })).status()).toBe(200);
     expect(
       (
         await post(correct, {
