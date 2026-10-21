@@ -27,24 +27,163 @@ import {
 } from "lucide-react";
 import {
   brandForeground,
+  CALL_LABELS,
+  groupOrders,
   money,
+  STATION_LABELS,
   type CartLine,
   type CustomerOrder,
   type MenuData,
   type MenuItem,
+  type ServiceCallKind,
+  type TabTotals,
+  SURVEY_TAGS,
 } from "@/lib/menu-types";
 import { splitTab, type SplitGuest } from "@/lib/split";
 
 const NAME_STORAGE = "comanda:name";
 
+/**
+ * Consulta periódica ao servidor (spec-fase2, seção 14): roda enquanto `active`
+ * e a aba está visível; pausa em segundo plano e atualiza na hora ao voltar.
+ */
+function usePolling(fn: () => Promise<void> | void, ms: number, active: boolean, immediate: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+    };
+    const start = () => {
+      stop();
+      timer = setInterval(() => void fn(), ms);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") stop();
+      else {
+        void fn();
+        start();
+      }
+    };
+    if (immediate) void fn();
+    if (document.visibilityState !== "hidden") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onVisibility);
+    };
+  }, [fn, ms, active, immediate]);
+}
+
+type SurveyPayload = {
+  rating: number;
+  food_rating: number | null;
+  service_rating: number | null;
+  wait_rating: number | null;
+  tags: string[];
+  comment: string;
+};
+
+function Stars({ value, onChange, label }: { value: number; onChange: (n: number) => void; label: string }) {
+  return (
+    <div className="survey-stars" role="radiogroup" aria-label={label}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={`${n} ${n === 1 ? "estrela" : "estrelas"}`} className={n <= value ? "on" : ""} onClick={() => onChange(n)}>
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Pesquisa de satisfação: aparece no lugar de "Mesa fechada" para quem estava na comanda. */
+function SurveyCard({
+  restaurant,
+  guestName,
+  busy,
+  result,
+  onSubmit,
+  onDismiss,
+}: {
+  restaurant: string;
+  guestName: string;
+  busy: boolean;
+  result: { google: string | null; rating: number } | null;
+  onSubmit: (payload: SurveyPayload) => Promise<void>;
+  onDismiss: () => void;
+}) {
+  const [rating, setRating] = useState(0);
+  const [extra, setExtra] = useState<{ food: number | null; service: number | null; wait: number | null }>({ food: null, service: null, wait: null });
+  const [tags, setTags] = useState<string[]>([]);
+  const [comment, setComment] = useState("");
+  if (result)
+    return (
+      <section className="survey-card" role="status">
+        <h2 className="font-heading text-2xl">{result.rating >= 4 ? "Que bom!" : "Obrigado."}</h2>
+        <p>{result.google ? "Pode deixar sua avaliação no Google? Leva um minuto." : "Seu comentário vai direto para o restaurante."}</p>
+        {result.google && (
+          <a href={result.google} target="_blank" rel="noopener noreferrer" className="survey-google">
+            Avaliar no Google
+          </a>
+        )}
+      </section>
+    );
+  return (
+    <section className="survey-card" aria-label="Pesquisa de satisfação">
+      <h2 className="font-heading text-2xl">Como foi sua experiência no {restaurant}?</h2>
+      <p className="survey-sub">{guestName}, sua opinião ajuda a casa a melhorar.</p>
+      <Stars value={rating} onChange={setRating} label="Nota geral" />
+      {rating > 0 && (
+        <form
+          className="survey-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void onSubmit({ rating, food_rating: extra.food, service_rating: extra.service, wait_rating: extra.wait, tags, comment: comment.trim() });
+          }}
+        >
+          <div className="survey-extra">
+            {([["food", "Comida"], ["service", "Atendimento"], ["wait", "Tempo de espera"]] as const).map(([key, label]) => (
+              <div key={key}>
+                <span>{label}</span>
+                <Stars value={extra[key] ?? 0} onChange={(n) => setExtra((x) => ({ ...x, [key]: n }))} label={label} />
+              </div>
+            ))}
+          </div>
+          <div className="survey-tags">
+            {SURVEY_TAGS.map((tag) => (
+              <button key={tag} type="button" aria-pressed={tags.includes(tag)} onClick={() => setTags((t) => (t.includes(tag) ? t.filter((x) => x !== tag) : [...t, tag]))}>
+                {tag}
+              </button>
+            ))}
+          </div>
+          <textarea maxLength={300} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Quer contar algo? (opcional)" aria-label="Comentário" />
+          <small>O comentário vai para o restaurante com o seu nome e a mesa.</small>
+          <button disabled={busy} className="survey-send">
+            {busy ? "Enviando…" : "Enviar"}
+          </button>
+        </form>
+      )}
+      <button type="button" className="survey-skip" onClick={onDismiss}>
+        Agora não
+      </button>
+    </section>
+  );
+}
+
 export function Menu({
   slug,
   qrToken,
   initialMenu,
+  consult = false,
 }: {
   slug: string;
   qrToken: string;
   initialMenu?: MenuData;
+  /** Raiz do domínio próprio: cardápio sem mesa, só para ver. */
+  consult?: boolean;
 }) {
   const base = `/api/customer/${slug}/${qrToken}`;
   const storage = `cart:${slug}:${qrToken}`;
@@ -67,9 +206,30 @@ export function Menu({
   const [hydrated, setHydrated] = useState(false);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [guests, setGuests] = useState<SplitGuest[]>([]);
+  const [totals, setTotals] = useState<TabTotals | null>(null);
   const [me, setMe] = useState<string | null>(null);
   const [estimate, setEstimate] = useState(0);
+  const [callSheet, setCallSheet] = useState(false);
+  const [callNote, setCallNote] = useState("");
+  const [callDone, setCallDone] = useState<ServiceCallKind | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [now, setNow] = useState(0);
+  const [surveyDismissed, setSurveyDismissed] = useState(false);
+  const [surveyResult, setSurveyResult] = useState<{ google: string | null; rating: number } | null>(null);
   const pendingRequest = useRef<string | null>(null);
+  const surveyTab = menu?.survey?.tab_id;
+  useEffect(() => {
+    // "Agora não" vale até fechar o navegador.
+    try {
+      if (surveyTab && sessionStorage.getItem(`survey:${surveyTab}`) === "1") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSurveyDismissed(true);
+      }
+    } catch {
+      /* sem armazenamento */
+    }
+  }, [surveyTab]);
   const cartReady = useRef(false);
   useEffect(() => {
     if (!selected) return;
@@ -106,6 +266,7 @@ export function Menu({
     };
   }, [selected]);
   const refresh = useCallback(async () => {
+    if (consult) return;
     try {
       const response = await fetch(`/api/menu/${slug}/${qrToken}`);
       const data = await response.json();
@@ -114,7 +275,7 @@ export function Menu({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível carregar");
     }
-  }, [slug, qrToken]);
+  }, [slug, qrToken, consult]);
   useEffect(() => {
     const initial = setTimeout(() => {
       setHydrated(true);
@@ -142,37 +303,39 @@ export function Menu({
       }
       cartReady.current = true;
     }, 0);
-    const timer = setInterval(refresh, 8_000);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(timer);
-    };
+    return () => clearTimeout(initial);
   }, [refresh, storage, initialMenu]);
+  // Cardápio (status dos pedidos, esgotados, chamadas): a cada 5 s, pausa em segundo plano.
+  usePolling(refresh, 5_000, !consult, false);
   useEffect(() => {
     if (cartReady.current) localStorage.setItem(storage, JSON.stringify(cart));
   }, [cart, storage]);
+  const updateTab = useCallback(async () => {
+    try {
+      const response = await fetch(base);
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error);
+        if (response.status === 401) setScreen("pin");
+        return;
+      }
+      setOrders(data.orders);
+      setGuests(data.guests);
+      setTotals(data.totals ?? null);
+      setMe(data.me);
+      setUpdatedAt(Date.now());
+      setOffline(false);
+    } catch {
+      setOffline(true);
+    }
+  }, [base]);
+  // Comanda da mesa aberta e visível: a cada 3 s (spec-fase2, seção 14).
+  usePolling(updateTab, 3_000, screen === "tab", true);
   useEffect(() => {
     if (screen !== "tab") return;
-    const update = async () => {
-      try {
-        const response = await fetch(base);
-        const data = await response.json();
-        if (!response.ok) {
-          setError(data.error);
-          if (response.status === 401) setScreen("pin");
-          return;
-        }
-        setOrders(data.orders);
-        setGuests(data.guests);
-        setMe(data.me);
-      } catch {
-        setError("Sem conexão. Tentando atualizar sua comanda…");
-      }
-    };
-    void update();
-    const timer = setInterval(update, 10_000);
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, [screen, base]);
+  }, [screen]);
   const post = async (body: unknown) => {
     const response = await fetch(base, {
       method: "POST",
@@ -283,6 +446,20 @@ export function Menu({
     );
   const primary =
     "rounded-[14px] bg-primary px-5 py-4 font-semibold text-primary-foreground disabled:opacity-50";
+  const myCalls = (menu.calls ?? []).filter((c) => c.mine);
+  const callWaiter = (kind: ServiceCallKind, note?: string) =>
+    run(async () => {
+      await post({ action: "call", kind, note });
+      setCallSheet(false);
+      setCallNote("");
+      setCallDone(kind);
+      await refresh();
+    });
+  const CALL_DONE: Record<ServiceCallKind, string> = {
+    garcom: "Avisamos o garçom. Ele vem até a mesa.",
+    conta: "Avisamos o garçom. Ele vem até a mesa para fechar.",
+    ajuda: "Avisamos o garçom. Ele vem até a mesa.",
+  };
   return (
     <main
       style={style}
@@ -327,7 +504,7 @@ export function Menu({
                 {menu.restaurant.name}
               </h1>
               <span className="mt-3 inline-block rounded-full bg-background px-4 py-2 text-sm text-foreground">
-                Mesa {menu.table.label}
+                {menu.table ? `Mesa ${menu.table.label}` : "Cardápio para consulta"}
               </span>
             </div>
           </header>
@@ -360,7 +537,76 @@ export function Menu({
               )}
             </nav>
           </div>
-          {!menu.open && (
+          {(myCalls.length > 0 || callDone) && (
+            <div className="call-banner call-banner-top" role="status">
+              <Bell size={18} />
+              <div>
+                <b>{CALL_DONE[myCalls[0]?.kind ?? callDone ?? "garcom"]}</b>
+                {myCalls.length > 0 ? (
+                  <small>
+                    {myCalls.map((c) => CALL_LABELS[c.kind]).join(" • ")} • às{" "}
+                    {new Date(myCalls[0].created_at).toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "America/Sao_Paulo",
+                    })}
+                  </small>
+                ) : (
+                  <small>Chamada atendida.</small>
+                )}
+              </div>
+              {myCalls.length > 0 ? (
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      for (const c of myCalls) await post({ action: "cancel_call", call_id: c.id });
+                      setCallDone(null);
+                      await refresh();
+                    })
+                  }
+                >
+                  Cancelar chamada
+                </button>
+              ) : (
+                <button onClick={() => setCallDone(null)} aria-label="Fechar aviso da chamada">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          )}
+          {menu.suspended && (
+            <section className="survey-card" role="alert">
+              <h2 className="font-heading text-2xl">Cardápio temporariamente indisponível</h2>
+              <p className="survey-sub">O restaurante está resolvendo uma pendência com o sistema. Chame alguém da equipe para fazer seu pedido.</p>
+            </section>
+          )}
+          {!menu.open && menu.survey && !surveyDismissed && (
+            <SurveyCard
+              restaurant={menu.restaurant.name}
+              guestName={menu.survey.guest_name}
+              busy={busy}
+              onSubmit={(payload) =>
+                run(async () => {
+                  const data = await post({ action: "survey", ...payload });
+                  setSurveyResult({ google: data.google_review_url ?? null, rating: payload.rating });
+                })
+              }
+              result={surveyResult}
+              onDismiss={() => {
+                setSurveyDismissed(true);
+                try {
+                  sessionStorage.setItem(`survey:${menu.survey!.tab_id}`, "1");
+                } catch {
+                  /* só conveniência */
+                }
+              }}
+            />
+          )}
+          {consult && !menu.suspended && (
+            <p className="closed-table-notice">Para pedir, escaneie o QR code da sua mesa.</p>
+          )}
+          {!menu.open && !menu.suspended && !consult && (
             <p className="closed-table-notice">
               Chame o garçom para abrir a mesa
             </p>
@@ -434,6 +680,11 @@ export function Menu({
                             <div className="mt-4 flex items-center justify-between">
                               <b className="text-primary">
                                 {money(i.price_cents)}
+                                {i.stock_left != null && i.stock_left <= 5 && (
+                                  <small className="stock-left-inline">
+                                    {i.stock_left === 1 ? "última unidade" : `últimas ${i.stock_left}`}
+                                  </small>
+                                )}
                               </b>
                               {menu.open && (
                                 <span className="rounded-full bg-primary p-2 text-primary-foreground">
@@ -486,6 +737,59 @@ export function Menu({
               <UtensilsCrossed size={18} /> Minha comanda
             </button>
           )}
+          {!(menu.survey && !surveyDismissed && !menu.open) && !menu.suspended && !consult && <div className={`call-fab-wrap ${cart.length > 0 && menu.open ? "with-cart" : ""}`}>
+            <button
+              className="call-fab"
+              disabled={busy}
+              onClick={() =>
+                menu.open && menu.authorized ? setCallSheet(true) : void callWaiter("garcom")
+              }
+            >
+              <Bell size={18} />
+              {menu.open ? "Chamar garçom" : "Chamar garçom para abrir a mesa"}
+            </button>
+          </div>}
+          {callSheet && (
+            <div className="call-sheet-backdrop" role="dialog" aria-modal="true" aria-label="Chamar garçom">
+              <section className="call-sheet">
+                <header>
+                  <h2 className="font-heading text-2xl">Como podemos ajudar?</h2>
+                  <button aria-label="Fechar" onClick={() => setCallSheet(false)}>
+                    <X />
+                  </button>
+                </header>
+                <button className="call-option" disabled={busy} onClick={() => void callWaiter("garcom")}>
+                  <Bell size={20} />
+                  <span><b>Chamar garçom</b><small>Alguém vem até a mesa.</small></span>
+                </button>
+                <button className="call-option" disabled={busy} onClick={() => void callWaiter("conta")}>
+                  <Check size={20} />
+                  <span><b>Pedir a conta</b><small>Avisa que a mesa quer fechar. O garçom traz a conta.</small></span>
+                </button>
+                <form
+                  className="call-option call-other"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void callWaiter("ajuda", callNote.trim());
+                  }}
+                >
+                  <label>
+                    <b>Outro</b>
+                    <input
+                      maxLength={80}
+                      placeholder="Ex.: mais guardanapos"
+                      value={callNote}
+                      onChange={(e) => setCallNote(e.target.value)}
+                      aria-label="Mensagem para o garçom"
+                    />
+                  </label>
+                  <button disabled={busy || !callNote.trim()} className={primary}>
+                    Enviar
+                  </button>
+                </form>
+              </section>
+            </div>
+          )}
           {cart.length > 0 && menu.open && (
             <div className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-xl p-4">
               <button
@@ -510,7 +814,7 @@ export function Menu({
             <ArrowLeft />
           </button>
           <span>
-            Mesa {menu.table.label} • {menu.restaurant.name}
+            {menu.table ? `Mesa ${menu.table.label} • ` : ""}{menu.restaurant.name}
           </span>
         </header>
       )}
@@ -699,6 +1003,7 @@ export function Menu({
                 setCart([]);
                 pendingRequest.current = null;
                 setScreen("sent");
+                void refresh();
               })
             }
           >
@@ -757,19 +1062,24 @@ export function Menu({
                 <p className="text-sm text-muted-foreground">Ainda não pediu nada.</p>
               )}
               <div className="space-y-4">
-            {ordersOf(person.id).map((order) => (
-              <article key={order.id} className="customer-order rounded-[20px] bg-card p-5"><header><h2>{order.status === "entregue" ? "Pedido anterior" : "Pedido em andamento"}</h2><small>#{order.id.slice(0,5).toUpperCase()}</small></header>
+            {groupOrders(ordersOf(person.id)).map((group) => {
+              const activeOrders = group.orders.filter((o) => o.status !== "cancelado");
+              const STATUS_PT: Record<string, string> = { recebido: "Recebido", em_preparo: "Em preparo", pronto: "Pronto", entregue: "Entregue", cancelado: "Cancelado" };
+              const mine = group.orders.every((o) => o.guest_id === me);
+              const canCancelAll = mine && activeOrders.length > 0 && activeOrders.every((o) => o.status === "recebido");
+              return (
+              <article key={group.key} className="customer-order rounded-[20px] bg-card p-5"><header><h2>{group.status === "entregue" ? "Pedido anterior" : group.status === "cancelado" ? "Pedido cancelado" : "Pedido em andamento"}</h2><small>#{group.key.slice(0,5).toUpperCase()}</small></header>
                 <div className="mb-4 flex justify-between">
                   <span className="text-sm text-muted-foreground">
-                    {new Date(order.created_at).toLocaleTimeString("pt-BR", {
+                    {new Date(group.created_at).toLocaleTimeString("pt-BR", {
                       hour: "2-digit",
                       minute: "2-digit",
                       timeZone: "America/Sao_Paulo",
                     })}
                   </span>
-                  <b>{money(order.total_cents)}</b>
+                  <b>{money(group.total_cents)}</b>
                 </div>
-                {order.status === "cancelado" ? (
+                {group.status === "cancelado" ? (
                   <p className="text-destructive">Cancelado</p>
                 ) : (
                   <ol className="order-timeline">
@@ -778,12 +1088,12 @@ export function Menu({
                         <li
                           key={status}
                           className={
-                            all.indexOf(order.status) >= index
+                            all.indexOf(group.status) >= index
                               ? "text-primary"
                               : "text-muted-foreground"
                           }
                         >
-                          <span className={`timeline-icon ${all.indexOf(order.status) >= index ? "complete" : ""}`}>{index === 0 ? <Check/> : index === 1 ? <ChefHat/> : index === 2 ? <Bell/> : <ShoppingBag/>}</span>
+                          <span className={`timeline-icon ${all.indexOf(group.status) >= index ? "complete" : ""}`}>{index === 0 ? <Check/> : index === 1 ? <ChefHat/> : index === 2 ? <Bell/> : <ShoppingBag/>}</span>
                           {
                             ["Recebido", "Em preparo", "Pronto", "Entregue"][
                               index
@@ -794,36 +1104,74 @@ export function Menu({
                     )}
                   </ol>
                 )}
-                {order.order_items.map((i) => (
-                  <div key={i.id} className="tab-order-item">{menu.items.find(item => item.name === i.name_snapshot)?.photo_url && <div className="tab-item-photo"><MenuPhoto slug={slug} src={menu.items.find(item => item.name === i.name_snapshot)!.photo_url!} alt={i.name_snapshot} width={85} height={75}/></div>}<div><p className="tab-item-title">
+                {activeOrders.length > 1 && (
+                  <p className="station-status" aria-label="Status por setor">
+                    {activeOrders.map((o) => (
+                      <span key={o.id}><b>{STATION_LABELS[o.station ?? "cozinha"]}:</b> {STATUS_PT[o.status]}</span>
+                    ))}
+                  </p>
+                )}
+                {group.items.map((i) => (
+                  <div key={i.id} className={`tab-order-item ${i.cancelled_at ? "tab-order-item-cancelled" : ""}`}>{menu.items.find(item => item.name === i.name_snapshot)?.photo_url && <div className="tab-item-photo"><MenuPhoto slug={slug} src={menu.items.find(item => item.name === i.name_snapshot)!.photo_url!} alt={i.name_snapshot} width={85} height={75}/></div>}<div><p className="tab-item-title">
                       {i.quantity}× {i.name_snapshot}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {i.modifiers_snapshot.map((m) => m.name).join(" • ")}
-                      {i.note && ` • ${i.note}`}
-                      {i.shared && " • Dividido com a mesa"}
-                    </p></div><b>{money(i.unit_price_cents * i.quantity)}</b>
+                      {i.cancelled_at
+                        ? "Cancelado"
+                        : [
+                            i.modifiers_snapshot.map((m) => m.name).join(" • "),
+                            i.note,
+                            i.shared ? "Dividido com a mesa" : "",
+                            activeOrders.length > 1 && i.station ? STATION_LABELS[i.station] : "",
+                          ].filter(Boolean).join(" • ")}
+                    </p>
+                    {!i.cancelled_at && mine && group.orders.find((o) => o.id === i.order_id)?.status === "recebido" && group.items.filter((x) => !x.cancelled_at).length > 1 && (
+                      <button
+                        disabled={busy}
+                        className="mt-1 text-xs text-destructive underline"
+                        aria-label={`Cancelar item ${i.name_snapshot}`}
+                        onClick={() =>
+                          void run(async () => {
+                            await post({ action: "cancel_item", item_id: i.id });
+                            setOrders((o) =>
+                              o.map((x) =>
+                                x.id === i.order_id
+                                  ? {
+                                      ...x,
+                                      total_cents: x.total_cents - i.unit_price_cents * i.quantity,
+                                      order_items: x.order_items.map((y) =>
+                                        y.id === i.id ? { ...y, cancelled_at: new Date().toISOString() } : y,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            );
+                            await updateTab();
+                          })
+                        }
+                      >
+                        Cancelar item
+                      </button>
+                    )}</div><b>{money(i.unit_price_cents * i.quantity)}</b>
                   </div>
                 ))}
-                {["recebido", "em_preparo"].includes(order.status) && (
+                {["recebido", "em_preparo"].includes(group.status) && (
                   <p className="tab-estimate"><Clock size={19}/>
-                    Previsão: cerca de {order.prep_minutes} min
+                    Previsão: cerca de {group.prep_minutes} min
                   </p>
                 )}
-                {order.status === "recebido" && order.guest_id === me && (
+                {canCancelAll && (
                   <button
                     disabled={busy}
                     className="mt-4 text-sm text-destructive underline"
                     onClick={() =>
                       void run(async () => {
-                        await post({ action: "cancel", order_id: order.id });
+                        for (const o of activeOrders) await post({ action: "cancel", order_id: o.id });
+                        const ids = new Set(activeOrders.map((o) => o.id));
                         setOrders((o) =>
-                          o.map((x) =>
-                            x.id === order.id
-                              ? { ...x, status: "cancelado" }
-                              : x,
-                          ),
+                          o.map((x) => (ids.has(x.id) ? { ...x, status: "cancelado" } : x)),
                         );
+                        await updateTab();
                       })
                     }
                   >
@@ -831,12 +1179,27 @@ export function Menu({
                   </button>
                 )}
               </article>
-            ))}
+              );
+            })}
               </div>
             </div>
             ))}
           </div>
-          <div className="tab-total-bar"><div><span>Sua parte</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>Total da mesa: {money(split.total_cents)}</small></div><button onClick={back}><Plus size={17}/> Pedir mais</button></div>
+          <p className="tab-updated" role="status" aria-label="Atualização da comanda" aria-live="polite">
+            {offline
+              ? "Sem conexão. Tentando atualizar sua comanda…"
+              : updatedAt === null
+                ? "Atualizando…"
+                : now - updatedAt < 6_000
+                  ? "Atualizado agora"
+                  : `Atualizado há ${Math.round((now - updatedAt) / 1000)} s`}
+          </p>
+          <div className="tab-total-bar"><div><span>Sua parte</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>
+            Total da mesa: {money(totals?.due_cents ?? split.total_cents)}
+            {totals && totals.fee_cents > 0 && ` • inclui ${totals.fee_percent}% de serviço`}
+            {totals && totals.discount_cents > 0 && ` • desconto de ${money(totals.discount_cents)}`}
+            {totals && totals.paid_cents > 0 && ` • pago ${money(totals.paid_cents)}`}
+          </small></div><button onClick={back}><Plus size={17}/> Pedir mais</button></div>
         </section>
       )}
       {selected && (
@@ -873,6 +1236,11 @@ export function Menu({
               <b className="text-xl text-primary">
                 {money(selected.price_cents)}
               </b>
+              {selected.stock_left != null && selected.stock_left <= 5 && (
+                <span className="stock-left-badge">
+                  {selected.stock_left === 1 ? "Última unidade" : `Últimas ${selected.stock_left} unidades`}
+                </span>
+              )}
               {selected.modifier_groups
                 .toSorted((a, b) => a.position - b.position)
                 .map((g) => (
@@ -953,7 +1321,7 @@ export function Menu({
                 <b>{quantity}</b>
                 <button
                   aria-label="Aumentar quantidade"
-                  disabled={quantity >= 99}
+                  disabled={quantity >= Math.min(99, selected.stock_left ?? 99)}
                   onClick={() => setQuantity((q) => q + 1)}
                 >
                   <Plus />
@@ -966,7 +1334,9 @@ export function Menu({
               >
                 {menu.open
                   ? `${editing ? "Salvar" : "Adicionar"} • ${money(unitPrice(selected, modifiers) * quantity)}`
-                  : "Chame o garçom"}
+                  : consult
+                    ? "Peça pelo QR da sua mesa"
+                    : "Chame o garçom"}
               </button>
             </div>
           </div>

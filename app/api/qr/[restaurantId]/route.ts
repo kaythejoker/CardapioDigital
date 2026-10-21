@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { managerAccess } from "@/lib/manage-access";
 import { tableQrPdf } from "@/lib/qr-pdf";
+import { menuOrigin } from "@/lib/menu-origin";
 
 export async function GET(
   request: Request,
@@ -24,16 +25,21 @@ export async function GET(
       { error: "Cadastre uma mesa ativa para gerar o PDF" },
       { status: 409 },
     );
-  const configured = process.env.NEXT_PUBLIC_MENU_URL || process.env.NEXT_PUBLIC_APP_URL;
-  const origin = configured
-    ? new URL(configured).origin
-    : new URL(request.url).origin;
+  // Domínio próprio ativo vale para os QR novos; os antigos continuam abrindo.
+  const resolved = menuOrigin(ctx.restaurant);
+  const origin =
+    resolved.kind !== "default"
+      ? resolved.origin
+      : process.env.NEXT_PUBLIC_MENU_URL || process.env.NEXT_PUBLIC_APP_URL
+        ? new URL((process.env.NEXT_PUBLIC_MENU_URL || process.env.NEXT_PUBLIC_APP_URL)!).origin
+        : new URL(request.url).origin;
   const pdf = await tableQrPdf(
     ctx.restaurant,
     data.toSorted((a, b) =>
       a.label.localeCompare(b.label, "pt-BR", { numeric: true }),
     ),
     origin,
+    resolved.short,
   );
   return new Response(Buffer.from(pdf), {
     headers: {

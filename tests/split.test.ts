@@ -89,6 +89,26 @@ test("pagamento registrado quita; pedido novo depois do pagamento reabre o saldo
   assert.equal(later.ana.balance_cents, 900);
 });
 
+test("item cancelado individualmente sai da conta de quem pediu e da divisão", () => {
+  const result = splitTab(
+    [guest("ana", 0), guest("bia", 1)],
+    [
+      {
+        ...order("ana", 2, [[3000, 1]]),
+        order_items: [
+          { unit_price_cents: 3000, quantity: 1, cancelled_at: at(3) },
+          { unit_price_cents: 1000, quantity: 2 },
+          { unit_price_cents: 4000, quantity: 1, shared: true, cancelled_at: at(3) },
+        ],
+      },
+    ],
+  );
+  const people = byId(result);
+  assert.equal(result.total_cents, 2000);
+  assert.equal(people.ana.due_cents, 2000);
+  assert.equal(people.bia.due_cents, 0);
+});
+
 test("pedidos antigos sem nome aparecem separados", () => {
   const result = byId(
     splitTab([guest("ana", 0)], [order(null, 1, [[4500, 1, true]]), order("ana", 2, [[100, 1]])]),

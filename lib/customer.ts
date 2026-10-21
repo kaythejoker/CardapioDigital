@@ -1,6 +1,6 @@
 import "server-only";
-import { createHash } from "node:crypto";
-import { cookies } from "next/headers";
+import { createHash, randomUUID } from "node:crypto";
+import { cookies, headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const hashToken = (token: string) =>
@@ -14,12 +14,31 @@ export const cookieOptions = {
   maxAge: 8 * 60 * 60,
 };
 
+/**
+ * Identificação do celular (cookie + IP), a mesma usada pelo bloqueio de PIN.
+ * Com `create`, grava o cookie quando ainda não existe (só em route handlers).
+ */
+export async function deviceId(create = false) {
+  const jar = await cookies();
+  let device = jar.get("comanda_device")?.value;
+  const valid = !!device && /^[0-9a-f-]{36}$/.test(device);
+  if (!valid) {
+    if (!create) return null;
+    device = randomUUID();
+    jar.set("comanda_device", device, { ...cookieOptions, maxAge: 365 * 86400 });
+  }
+  // A Vercel fornece este cabeçalho. Nunca aceitar IP do corpo da requisição.
+  const ip =
+    (await headers()).get("x-vercel-forwarded-for")?.split(",")[0] || "local";
+  return hashToken(`${device}:${ip}`);
+}
+
 export async function customerTable(slug: string, qr: string) {
   const db = createAdminClient();
   const { data: restaurant, error } = await db
     .from("restaurants")
     .select(
-      "id,name,slug,logo_url,cover_url,primary_color,background_color,resellers(brand_name,logo_url,primary_color)",
+      "id,name,slug,logo_url,cover_url,primary_color,background_color,custom_domain,custom_domain_status,resellers(brand_name,logo_url,primary_color,domain,domain_status)",
     )
     .eq("slug", slug)
     .eq("status", "active")
@@ -55,15 +74,14 @@ export async function customerSession(
     .maybeSingle();
   if (error) throw error;
   if (!session) return null;
-  const { data: tab } = await context.db
-    .from("tabs")
-    .select("id,status")
-    .eq("id", session.tab_id)
-    .eq("table_id", context.table.id)
-    .eq("status", "open")
-    .maybeSingle();
+  // A comanda da sessão precisa ser a comanda aberta desta mesa (principal ou unida).
+  const { data: openTab } = await context.db.rpc("tab_for_table", {
+    p_table: context.table.id,
+  });
+  if (!openTab || openTab !== session.tab_id) return null;
+  const tab = { id: session.tab_id as string, status: "open" };
   // Sessões anteriores à divisão por pessoa não têm nome: o cliente entra de novo.
-  return tab && session.guest_id
+  return session.guest_id
     ? { ...context, tab, guestId: session.guest_id, tokenHash: hashToken(token) }
     : null;
 }

@@ -147,6 +147,14 @@
 .hub-cozinha { background: #292922; color: #fff4df; border-color: #292922; }
 .hub-cozinha .hub-card-icon { background: #434133; color: #dec89c; }
 .hub-cozinha p,.hub-cozinha .hub-card-link { color: #c3b79f; }
+.hub-bar { background: #2b2436; color: #f3e9ff; border-color: #2b2436; }
+.hub-bar .hub-card-icon { background: #463a5a; color: #d9c5f2; }
+.hub-bar p,.hub-bar .hub-card-link { color: #c0b0d6; }
+.bar-screen { background: radial-gradient(ellipse at top, #2d2538, #1f1b26 70%) !important; }
+.bar-screen .kitchen-ticket { border-color: #5a4a73; background: linear-gradient(120deg, #2f2740, #262031); }
+.bar-screen .kitchen-flame { color: #c9a6ff; }
+.station-tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; vertical-align: middle; background: #f1e8d9; color: #8c5416; }
+.station-tag.bar { background: #e9e0f5; color: #5a3d8a; }
 .hub-customer { display: flex; align-items: center; gap: 18px; margin-top: 22px; padding: 22px 26px; border: 1px solid #ddcdb8; border-radius: 14px; background: #f4ecdf; }
 .hub-customer>svg:last-child { margin-left: auto; width: 20px; color: #997658; }
 .hub-customer strong { font-size: 16px; font-weight: 650; }
@@ -184,6 +192,115 @@
 .waiter-table { border-radius: 12px; box-shadow: 0 2px 4px #45321805; }
 .waiter-table.free { background: #f1f4eb; border-color: #d3dec7; }
 .waiter-table.ready { background: #e1edda; border-color: #9db990; }
+/* Equipe: papéis múltiplos e permissões por pessoa (fase 2, etapa 1). */
+.role-picker legend, .permission-picker legend { font-size: 13px; font-weight: 600; color: var(--panel-muted, #746d64); }
+.role-picker label { background: #fffefa; font-size: 14px; cursor: pointer; }
+.role-picker label:has(input:checked) { border-color: var(--brand, #e0552b); color: var(--brand, #e0552b); font-weight: 600; }
+.permission-picker label { padding: 6px 0; }
+.member-editor { border: 1px solid var(--panel-line, #e8e3db); }
+.team-member:last-child { border-bottom: 0; padding-bottom: 0; }
+/* Estoque e cancelamento por item (fase 2, etapa 2). */
+.stat-icon.warn { background: #f8e3c4; color: #a4651d; }
+.stock-balance { display: grid; text-align: center; min-width: 92px; padding: 8px 12px; border-radius: 14px; background: #eef3e6; color: #3f6b3b; }
+.stock-balance strong { font-family: var(--font-fraunces), serif; font-size: 26px; line-height: 1; }
+.stock-balance small { font-size: 10px; margin-top: 3px; }
+.stock-balance.low { background: #f8e3c4; color: #8c5416; }
+.stock-balance.empty { background: #f6d9d3; color: #a53a2a; }
+.stock-hint { display: block; font-size: 12px; margin-top: 3px; color: #a8bba0; }
+.stock-hint.low { color: #e9b96a; }
+.stock-hint.empty { color: #f5a08a; }
+.ticket-item-cancelled h3 { text-decoration: line-through; opacity: .55; }
+.ticket-item-cancelled p { opacity: .55; }
+.ticket-cancelled-badge { display: inline-block; margin-left: 10px; font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; background: #743d2f; color: #ffb18a; vertical-align: middle; }
+.cancel-sheet select, .cancel-sheet input { font-size: 14px; }
+/* Alertas e chamadas (fase 2, etapa 3). */
+.sound-toggle { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; font-size: 12px; color: var(--muted-foreground); }
+.sound-toggle.on { color: #2F7D5B; border-color: #2F7D5B55; }
+.kitchen-screen .sound-toggle { border-color: #5f513b; color: #d9c9ae; background: #332d23; }
+.kitchen-screen .sound-toggle.on { color: #b7d59d; }
+@keyframes ticket-pop { 0% { box-shadow: 0 0 0 0 #e0b26e80; transform: translateY(-4px); } 100% { box-shadow: 0 5px 15px #0002; transform: none; } }
+.kitchen-ticket.ticket-new { border-color: #e0b26e; animation: ticket-pop 1.2s ease-out 3; }
+.call-counter { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; background: #c94a2c; color: white; padding: 8px 16px; font-size: 13px; font-weight: 600; animation: ticket-pop 1.2s ease-out 3; }
+.waiter-table.calling { border-color: #c94a2c; box-shadow: 0 0 0 3px #c94a2c22; }
+.call-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11px; font-weight: 600; color: #c94a2c; }
+.call-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 0; padding: 12px 14px; border-radius: 14px; background: #fbe9e2; border: 1px solid #efc4b5; }
+.call-row b { display: flex; align-items: center; gap: 6px; color: #a53a2a; }
+.call-row small { display: block; margin-top: 3px; color: #8c6a60; }
+/* Mesas unidas (fase 2, etapa 5). */
+.waiter-table.merged { border-style: dashed; }
+.merged-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11px; font-weight: 600; color: #6f5a3a; }
+.merge-box { margin-top: 18px; padding: 14px; border-radius: 14px; background: #f6f1e8; border: 1px solid #ebe2d4; }
+.merge-box > div > b { display: inline-flex; align-items: center; gap: 6px; }
+.merge-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.merge-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #fffdf9; border: 1px solid #e5dacc; font-size: 13px; }
+.merge-chip small { color: #8b7d6b; font-size: 11px; }
+.merge-chip button { font-size: 11px; color: #a53a2a; text-decoration: underline; }
+.merge-options { display: grid; gap: 12px; margin-top: 12px; }
+.merge-options small { display: block; margin-bottom: 6px; color: #8b7d6b; font-size: 12px; }
+/* Domínio próprio (fase 2, etapa 9). */
+.domain-status { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #f8e3c4; color: #8c5416; }
+.domain-status.active { background: #eef3e6; color: #3f6b3b; }
+.domain-status.error { background: #f6d9d3; color: #a53a2a; }
+.dns-box { padding: 12px 14px; border-radius: 12px; background: #f6f1e8; font-size: 13px; }
+.dns-box code { background: #fff; padding: 2px 6px; border-radius: 6px; }
+/* Ajuda e assinatura (fase 2, etapa 8). */
+.help-backdrop { position: fixed; inset: 0; z-index: 60; background: #1e1a1680; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.help-sheet { width: 100%; max-width: 520px; max-height: 90vh; overflow: auto; background: #fdfcf9; color: #302b26; border-radius: 20px; padding: 22px; }
+.help-contact { margin-top: 14px; display: grid; gap: 8px; font-size: 14px; }
+.help-whatsapp { display: inline-block; justify-self: start; border-radius: 999px; background: #25d366; color: #0b3d1f; font-weight: 700; padding: 11px 18px; }
+.help-faq details { border-top: 1px solid #ebe2d4; padding: 10px 0; font-size: 14px; }
+.help-faq summary { cursor: pointer; font-weight: 600; }
+.help-faq p { margin-top: 6px; color: #6f665c; }
+.access-banner { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; font-size: 14px; }
+.access-banner.trial { background: #eef3e6; color: #3f6b3b; }
+.access-banner.late { background: #f8e3c4; color: #8c5416; }
+.access-banner.blocked { background: #f6d9d3; color: #a53a2a; font-weight: 600; }
+.kitchen-screen .access-banner, .waiter-screen .access-banner { margin: 12px 20px 0; }
+.subscription-panel { margin-top: 12px; padding: 12px; border-radius: 12px; background: #f6f1e8; }
+.subscription-status { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #eef3e6; color: #3f6b3b; }
+.subscription-status.teste { background: #e9e0f5; color: #5a3d8a; }
+.subscription-status.atrasada { background: #f8e3c4; color: #8c5416; }
+.subscription-status.suspensa, .subscription-status.cancelada { background: #f6d9d3; color: #a53a2a; }
+/* Relatórios, histórico e satisfação (fase 2, etapa 7). */
+.closed-today { margin: 0 0 20px; padding: 16px; border-radius: 16px; background: #fffefa; border: 1px solid #e8e3db; }
+.closed-today > header { margin-bottom: 10px; }
+.closed-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid #ebe2d4; background: #fff; text-align: left; }
+.closed-row small { display: block; color: #8b7d6b; font-size: 12px; margin-top: 2px; }
+.period-button { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--panel-line, #e8e3db); background: #fffefa; font-size: 13px; }
+.period-button[aria-pressed="true"] { background: var(--brand, #e0552b); color: white; border-color: var(--brand, #e0552b); font-weight: 600; }
+.report-stats { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.report-stats .stat-card strong { font-size: 24px; }
+.report-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.report-table .queue-table td, .report-table .queue-table th { font-size: 13px; }
+.survey-bar { display: grid; grid-template-columns: 44px 1fr 36px; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+.survey-bar > div { height: 10px; border-radius: 999px; background: #f1e8d9; overflow: hidden; }
+.survey-bar i { display: block; height: 100%; background: #e0b26e; }
+.tab-detail h4 { margin: 14px 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #8b7d6b; }
+.tab-detail h4:first-child { margin-top: 0; }
+.tab-detail p { font-size: 14px; margin: 3px 0; }
+.tab-detail small { color: #8b7d6b; font-size: 12px; }
+.tab-detail-grid { display: grid; gap: 24px; grid-template-columns: 1fr 1.4fr; }
+.tab-detail-order { padding: 8px 0; border-top: 1px solid #efe8dc; }
+.tab-detail-order > p:first-child { display: flex; justify-content: space-between; gap: 10px; }
+.tab-detail-order p span { color: #6f5a3a; }
+.tab-detail-log { list-style: none; font-size: 13px; }
+.tab-detail-log li { padding: 3px 0; }
+@media (max-width: 899px) { .tab-detail-grid { grid-template-columns: 1fr; } }
+/* Financeiro da comanda (fase 2, etapa 6). */
+.tab-totals { margin: 18px 0 12px; padding: 14px 16px; border-radius: 14px; background: #f6f1e8; display: grid; gap: 8px; font-size: 15px; }
+.tab-totals > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.tab-totals small { color: #8b7d6b; font-size: 12px; }
+.tab-totals-due { border-top: 1px solid #e5dacc; padding-top: 10px; font-size: 18px; }
+.tab-totals-balance b { color: #a53a2a; }
+.tab-totals-ok b { color: #2F7D5B; }
+.payments-box { margin: 10px 0 16px; padding: 12px 14px; border-radius: 14px; border: 1px solid #ebe2d4; }
+.payment-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid #efe8dc; font-size: 14px; }
+.payment-row > span { flex: 1; }
+.payment-row small { display: block; color: #8b7d6b; font-size: 11px; }
+.payment-row button { font-size: 12px; color: #a53a2a; text-decoration: underline; }
+.finance-form { display: grid; gap: 10px; margin-top: 12px; padding: 12px; border-radius: 12px; background: #fffdf9; border: 1px solid #ebe2d4; }
+.finance-form label { display: grid; gap: 4px; font-size: 13px; }
+.finance-form input, .finance-form select { padding: 10px 12px; border: 1px solid #e5dacc; border-radius: 10px; background: #fff; font-size: 15px; }
 @media (min-width: 1600px) {
   .admin-content { padding: 36px 44px; }
   .stat-card strong { font-size: 35px; }

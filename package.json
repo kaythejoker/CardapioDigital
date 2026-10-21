@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test tests/priority.test.ts tests/split.test.ts",
+    "test": "tsx --test tests/priority.test.ts tests/split.test.ts tests/permissions.test.ts",
     "test:e2e": "node --env-file=.env.local node_modules/@playwright/test/cli.js test",
     "typecheck": "next typegen && tsc --noEmit",
     "db:check": "tsx scripts/db-check.ts",

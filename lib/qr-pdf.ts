@@ -7,6 +7,8 @@ export async function tableQrPdf(
   restaurant: { name: string; slug: string },
   tables: { label: string; qr_token: string }[],
   origin: string,
+  /** Domínio próprio do restaurante: caminho curto /m/{qr}. */
+  short = false,
 ) {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -54,7 +56,7 @@ export async function tableQrPdf(
         size,
         font: bold,
       });
-      const url = `${origin}/${restaurant.slug}/m/${table.qr_token}`;
+      const url = short ? `${origin}/m/${table.qr_token}` : `${origin}/${restaurant.slug}/m/${table.qr_token}`;
       const image = await pdf.embedPng(
         await QRCode.toBuffer(url, {
           width: 450,

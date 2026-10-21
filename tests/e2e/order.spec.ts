@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { customerOrigin } from "./helpers";
 
 const BRASA = "20000000-0000-4000-8000-000000000001";
 const db = () =>
@@ -146,22 +147,26 @@ test("pedido completo, Realtime e revogação de sessão", async ({ browser }) =
       customer.getByRole("heading", { name: "Você • Ana E2E", exact: true }),
     ).toBeVisible();
     await waiter
-      .getByRole("button", { name: "Marcar Ana E2E como pago", exact: true })
+      .getByRole("button", { name: "Registrar pagamento de Ana E2E", exact: true })
       .click();
-    await expect(
-      waiter.getByRole("button", {
-        name: "Desfazer pagamento de Ana E2E",
-        exact: true,
-      }),
-    ).toBeVisible();
+    await waiter.getByLabel("Forma de pagamento").selectOption("pix");
+    await waiter
+      .getByRole("button", { name: "Confirmar pagamento", exact: true })
+      .click();
+    await expect(waiter.getByText("Quitado", { exact: true })).toBeVisible();
+    await expect(waiter.getByRole("button", { name: /Desfazer pagamento de/ })).toBeVisible();
     await waiter
       .getByRole("button", { name: "Fechar comanda", exact: true })
       .click();
     await waiter
       .getByRole("button", { name: "Confirmar fechamento", exact: true })
       .click();
+    // O fechamento é assíncrono: espera a comanda constar como fechada antes de testar a revogação.
+    await expect
+      .poll(async () => (await admin.from("tabs").select("status").eq("id", tab!.id).single()).data?.status, { timeout: 10_000 })
+      .toBe("closed");
     const response = await customer.request.get(
-      `/api/customer/brasa-bistro/${table.qr_token}`,
+      `${await customerOrigin()}/api/customer/brasa-bistro/${table.qr_token}`,
     );
     expect(response.status()).toBe(401);
     await customer.goto(url);

@@ -13,18 +13,23 @@ export async function POST(
   const input = teamSchema.safeParse(await request.json().catch(() => null));
   if (!id.success || !input.success)
     return Response.json(
-      { error: "Confira nome, e-mail e senha (mínimo 12 caracteres)" },
+      { error: "Confira nome, e-mail, papéis e senha (mínimo 12 caracteres)" },
       { status: 400 },
     );
   const ctx = await managerAccess(id.data);
   if (!ctx) return Response.json({ error: "Acesso negado" }, { status: 403 });
-  if (input.data.role === "manager" && !ctx.isReseller)
+  if (!ctx.isManager && !ctx.isReseller)
+    return Response.json(
+      { error: "Apenas o gestor ou a revenda mexem na equipe" },
+      { status: 403 },
+    );
+  const { email, name, roles, permissions, password } = input.data;
+  if (roles.includes("manager") && !ctx.isReseller)
     return Response.json(
       { error: "Apenas a revenda convida gestores" },
       { status: 403 },
     );
   const admin = createAdminClient();
-  const { email, name, role, password } = input.data;
   // Existing accounts keep their credentials and memberships in other restaurants.
   let userId: string | undefined;
   for (let page = 1; ; page++) {
@@ -46,11 +51,11 @@ export async function POST(
   if (userId && !ctx.isReseller) {
     const { data: existing } = await ctx.db
       .from("restaurant_members")
-      .select("role")
+      .select("roles")
       .eq("user_id", userId)
       .eq("restaurant_id", id.data)
       .maybeSingle();
-    if (existing?.role === "manager")
+    if (existing?.roles?.includes("manager"))
       return Response.json(
         { error: "Apenas a revenda altera o acesso de gestores" },
         { status: 403 },
@@ -76,9 +81,13 @@ export async function POST(
     userId = result.data.user.id;
     created = true;
   }
-  const { error } = await ctx.db
-    .from("restaurant_members")
-    .upsert({ user_id: userId, restaurant_id: id.data, role });
+  const { error } = await ctx.db.from("restaurant_members").upsert({
+    user_id: userId,
+    restaurant_id: id.data,
+    roles,
+    permissions: permissions ?? {},
+    active: true,
+  });
   if (error) {
     if (created) await admin.auth.admin.deleteUser(userId);
     return Response.json(

@@ -238,8 +238,8 @@ O MVP cobre o ciclo completo de um pedido e o cadastro de restaurantes. O resto 
 | Fase | Entra |
 | --- | --- |
 | MVP | As 20 telas listadas acima: cardápio, PIN, pedido, fila da cozinha com as 3 regras, garçom, gestor, revendedor, QR codes |
-| Fase 2 | Chamar garçom pelo app, pedir a conta, status em tempo real para o cliente, importar cardápio por foto com IA, relatórios, resumo semanal no WhatsApp do dono, juntar mesas (o garçom une duas ou mais mesas numa só comanda, com o mesmo PIN, e o QR de qualquer uma delas funciona) |
-| Fase 3 | Pagamento pelo app (Pix), pesquisa de satisfação com envio para o Google, fidelidade, cardápio em outros idiomas |
+| Fase 2 | Detalhada em [spec-fase2.md](spec-fase2.md) (2026-10-20): alertas sonoros, suporte, cancelamento por item, unir mesas, estoque, financeiro, domínio próprio, relatórios, painel do bar, permissões, histórico, chamar garçom e pedir a conta (só aviso), assinaturas, comanda em tempo real, pesquisa de satisfação com envio para o Google. Ficam para depois: importar cardápio por foto com IA e resumo semanal no WhatsApp do dono |
+| Fase 3 | Pagamento e fechamento da conta pelo app (Pix), fidelidade, cardápio em outros idiomas |
 
 **Fora do escopo:** emissão de nota fiscal, integração com PDV ou caixa, impressão automática na cozinha, delivery.
 
@@ -261,8 +261,8 @@ O MVP cobre o ciclo completo de um pedido e o cadastro de restaurantes. O resto 
 As respostas mudam o modelo de dados ou o visual, então vale fechar com o Felipe antes de começar a construir.
 
 - [ ] **Nome e marca do produto:** qual o nome, a logo e a cor principal do Felipe? O prompt do visual usa uma marca de exemplo até isso chegar.
-- [ ] **Cozinha e bar separados:** bebidas vão para uma tela de bar e pratos para a cozinha? É comum e muda a fila (cada item precisa de um "setor").
-- [ ] **Taxa de serviço:** a comanda mostra os 10% do garçom no total? Opcional por restaurante?
+- [x] **Cozinha e bar separados:** sim, confirmado pela lista Mesa Click em 20/10. Setor por categoria e item; ver seção 9 da [spec-fase2.md](spec-fase2.md).
+- [ ] **Taxa de serviço:** proposta na seção 6 da [spec-fase2.md](spec-fase2.md): percentual por restaurante, padrão 0, opcional ao fechar. Falta confirmar.
 - [x] **Mais de uma comanda por mesa:** resolvido em 15/10 com uma comanda por mesa dividida por pessoa (nome no PIN, itens divididos com a mesa, pagamento marcado pelo garçom). Juntar mesas ficou para a Fase 2.
 - [ ] **Acesso do garçom:** cada garçom tem login próprio, ou a equipe usa um código de acesso compartilhado por restaurante?
 - [ ] **Quem monta o cardápio:** o restaurante cadastra sozinho ou a equipe do Felipe faz a implantação? Isso define o quanto a importação por foto (fase 2) é urgente.

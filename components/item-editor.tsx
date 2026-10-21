@@ -17,10 +17,21 @@ export function ItemEditor({
   item,
   onClose,
   onSaved,
+  categoryStation,
 }: {
   restaurantId: string;
   categories: { id: string; name: string }[];
-  item: (MenuItem & { active: boolean; position: number }) | null;
+  item:
+    | (MenuItem & {
+        active: boolean;
+        position: number;
+        stock_enabled?: boolean;
+        stock_quantity?: number | null;
+        low_stock_threshold?: number;
+        station?: "cozinha" | "bar" | null;
+      })
+    | null;
+  categoryStation?: (categoryId: string) => "cozinha" | "bar";
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -36,6 +47,10 @@ export function ItemEditor({
           active: item.active,
           featured: item.featured,
           position: item.position,
+          stock_enabled: item.stock_enabled ?? false,
+          stock_quantity: item.stock_quantity ?? null,
+          low_stock_threshold: item.low_stock_threshold ?? 5,
+          station: item.station ?? null,
           groups: item.modifier_groups
             .toSorted((a, b) => a.position - b.position)
             .map((g) => ({
@@ -63,6 +78,10 @@ export function ItemEditor({
           active: true,
           featured: false,
           position: 0,
+          stock_enabled: false,
+          stock_quantity: null,
+          low_stock_threshold: 5,
+          station: null,
           groups: [],
         },
   );
@@ -176,6 +195,23 @@ export function ItemEditor({
             />
           </label>
         </div>
+        <label className="block md:w-1/2">
+          Setor de preparo
+          <select
+            value={value.station ?? ""}
+            onChange={(e) =>
+              set("station", (e.target.value || null) as "cozinha" | "bar" | null)
+            }
+            className={fieldClass}
+          >
+            <option value="">
+              Herdar da categoria
+              {categoryStation ? ` (${categoryStation(value.category_id) === "bar" ? "Bar" : "Cozinha"})` : ""}
+            </option>
+            <option value="cozinha">Cozinha</option>
+            <option value="bar">Bar</option>
+          </select>
+        </label>
         <ImageUpload
           kind="restaurant"
           id={restaurantId}
@@ -201,6 +237,58 @@ export function ItemEditor({
             Destaque da casa
           </label>
         </div>
+        <fieldset className="rounded-2xl border p-4">
+          <legend className="px-2 font-semibold">Estoque</legend>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={value.stock_enabled}
+              onChange={(e) =>
+                setValue((v) => ({
+                  ...v,
+                  stock_enabled: e.target.checked,
+                  stock_quantity: e.target.checked ? (v.stock_quantity ?? 0) : null,
+                }))
+              }
+            />
+            Controlar estoque
+          </label>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Cada pedido baixa a quantidade; ao chegar a zero o item some do cardápio
+            até a reposição. Cancelamentos devolvem ao estoque.
+          </p>
+          {value.stock_enabled && (
+            <div className="mt-4 grid gap-5 md:grid-cols-2">
+              <label>
+                Quantidade atual
+                <input
+                  type="number"
+                  min={0}
+                  max={100000}
+                  required
+                  aria-label="Quantidade em estoque"
+                  value={value.stock_quantity ?? 0}
+                  onChange={(e) => set("stock_quantity", Number(e.target.value))}
+                  className={fieldClass}
+                />
+              </label>
+              <label>
+                Avisar quando restar
+                <input
+                  type="number"
+                  min={0}
+                  max={100000}
+                  aria-label="Limite de alerta de estoque"
+                  value={value.low_stock_threshold}
+                  onChange={(e) =>
+                    set("low_stock_threshold", Number(e.target.value))
+                  }
+                  className={fieldClass}
+                />
+              </label>
+            </div>
+          )}
+        </fieldset>
         <div>
           <h4 className="mb-4 font-heading text-2xl">Grupos de adicionais</h4>
           <div className="space-y-4">

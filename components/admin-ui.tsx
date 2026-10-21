@@ -4,10 +4,16 @@ import Link from "next/link";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Banknote,
+  BarChart3,
   ChefHat,
+  CreditCard,
+  History,
   Home,
+  Star,
   LayoutGrid,
   LogOut,
+  Package,
   Palette,
   QrCode,
   Settings,
@@ -15,9 +21,19 @@ import {
   Upload,
   Users,
   UtensilsCrossed,
+  Wine,
 } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { HelpButton, type Support } from "@/components/support";
 import { brandForeground } from "@/lib/menu-types";
+import {
+  defaultPermission,
+  effectivePermissions,
+  MEMBER_ROLES,
+  PERMISSIONS,
+  ROLE_LABELS,
+  type Permissions,
+} from "@/lib/permissions";
 
 export const fieldClass =
   "admin-field mt-2 w-full rounded-xl border bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary";
@@ -48,6 +64,9 @@ export function AdminShell({
   revenda,
   children,
   restaurant,
+  views,
+  support,
+  features,
 }: {
   brand: { brand_name: string; primary_color: string; logo_url: string | null };
   title: string;
@@ -55,6 +74,12 @@ export function AdminShell({
   onNavigate: (view: string) => void;
   revenda?: boolean;
   restaurant?: { name: string; logo_url: string | null; menuUrl?: string };
+  /** Itens do menu visíveis para esta pessoa; vazio = todos. */
+  views?: readonly string[];
+  /** Contato de suporte da revenda para o botão Ajuda. */
+  support?: Support;
+  /** Módulos do plano: esconde atalhos como o Bar. */
+  features?: Partial<Record<string, boolean>>;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -75,18 +100,26 @@ export function AdminShell({
     );
     return () => clearTimeout(initial);
   }, []);
-  const nav = revenda
-    ? [
-        { id: "restaurants", label: "Restaurantes", icon: Store },
-        { id: "brand", label: "Marca", icon: Palette },
-      ]
-    : [
-        { id: "home", label: "Início", icon: Home },
-        { id: "menu", label: "Cardápio", icon: UtensilsCrossed },
-        { id: "tables", label: "Mesas e QR", icon: QrCode },
-        { id: "team", label: "Equipe", icon: Users },
-        { id: "settings", label: "Configurações", icon: Settings },
-      ];
+  const nav = (
+    revenda
+      ? [
+          { id: "restaurants", label: "Restaurantes", icon: Store },
+          { id: "plans", label: "Planos", icon: CreditCard },
+          { id: "brand", label: "Marca", icon: Palette },
+        ]
+      : [
+          { id: "home", label: "Início", icon: Home },
+          { id: "menu", label: "Cardápio", icon: UtensilsCrossed },
+          { id: "stock", label: "Estoque", icon: Package },
+          { id: "finance", label: "Financeiro", icon: Banknote },
+          { id: "reports", label: "Relatórios", icon: BarChart3 },
+          { id: "history", label: "Histórico", icon: History },
+          { id: "survey", label: "Satisfação", icon: Star },
+          { id: "tables", label: "Mesas e QR", icon: QrCode },
+          { id: "team", label: "Equipe", icon: Users },
+          { id: "settings", label: "Configurações", icon: Settings },
+        ]
+  ).filter((n) => (!views?.length || views.includes(n.id)) && featureFor(n.id, features));
   const style = {
     "--brand": brand.primary_color,
     "--brand-foreground": brandForeground(brand.primary_color),
@@ -147,12 +180,19 @@ export function AdminShell({
                 <ChefHat size={18} />
                 Cozinha
               </Link>
+              {features?.bar !== false && (
+                <Link className="flex items-center gap-2" href="/app/bar">
+                  <Wine size={18} />
+                  Bar
+                </Link>
+              )}
               <Link className="flex items-center gap-2" href="/app/garcom">
                 <Users size={18} />
                 Salão
               </Link>
             </>
           )}
+          {support && <HelpButton support={support} context={revenda ? "painel da revenda" : `painel do gestor${restaurant ? ` de ${restaurant.name}` : ""}`} />}
           <button
             className="flex items-center gap-2 text-left"
             onClick={async () => {
@@ -178,6 +218,12 @@ export function AdminShell({
       </div>
     </main>
   );
+}
+
+/** Esconde no menu as telas de módulos fora do plano. */
+function featureFor(view: string, features?: Partial<Record<string, boolean>>) {
+  const key = { stock: "stock", finance: "finance", reports: "reports", survey: "surveys" }[view];
+  return !key || features?.[key] !== false;
 }
 
 export function ImageUpload({
@@ -255,6 +301,92 @@ export function ImageUpload({
   );
 }
 
+const STAFF_ROLES = MEMBER_ROLES.filter((r) => r !== "manager");
+
+/** Papéis de uma pessoa da equipe (sem o de gestor, que só a revenda dá). */
+export function RolePicker({
+  value,
+  onChange,
+  name,
+}: {
+  value: readonly string[];
+  onChange: (roles: string[]) => void;
+  name?: string;
+}) {
+  return (
+    <fieldset className="role-picker">
+      <legend className="mb-2">Papéis</legend>
+      <div className="flex flex-wrap gap-3">
+        {STAFF_ROLES.map((role) => (
+          <label key={role} className="flex items-center gap-2 rounded-xl border px-3 py-2">
+            <input
+              type="checkbox"
+              name={name}
+              value={role}
+              checked={value.includes(role)}
+              onChange={(e) =>
+                onChange(
+                  e.target.checked
+                    ? [...value, role]
+                    : value.filter((r) => r !== role),
+                )
+              }
+            />
+            {ROLE_LABELS[role]}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Permissões efetivas com o padrão do papel já marcado; o ajuste fica em `value`. */
+export function PermissionPicker({
+  roles,
+  value,
+  onChange,
+}: {
+  roles: readonly string[];
+  value: Permissions;
+  onChange: (permissions: Permissions) => void;
+}) {
+  const effective = effectivePermissions(roles, value);
+  const manager = roles.includes("manager");
+  const groups = [...new Set(PERMISSIONS.map((p) => p.group))];
+  return (
+    <div className="permission-picker space-y-3">
+      {groups.map((group) => (
+        <fieldset key={group}>
+          <legend className="mb-2 text-sm text-muted-foreground">{group}</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {PERMISSIONS.filter((p) => p.group === group).map((p) => (
+              <label key={p.key} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  aria-label={p.label}
+                  checked={effective[p.key]}
+                  disabled={manager}
+                  onChange={(e) => {
+                    const next = { ...value };
+                    if (e.target.checked === defaultPermission(roles, p.key))
+                      delete next[p.key];
+                    else next[p.key] = e.target.checked;
+                    onChange(next);
+                  }}
+                />
+                {p.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ))}
+      {manager && (
+        <p className="text-xs text-muted-foreground">O gestor tem todas as permissões.</p>
+      )}
+    </div>
+  );
+}
+
 export function TeamForm({
   restaurantId,
   manager,
@@ -268,6 +400,8 @@ export function TeamForm({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState("password");
+  const [roles, setRoles] = useState<string[]>(["waiter"]);
+  const [permissions, setPermissions] = useState<Permissions>({});
   return (
     <form
       className={`${panelClass} space-y-4`}
@@ -275,6 +409,10 @@ export function TeamForm({
         e.preventDefault();
         const form = e.currentTarget;
         const values = new FormData(form);
+        if (!manager && !roles.length) {
+          setError("Escolha pelo menos um papel");
+          return;
+        }
         setBusy(true);
         setError("");
         setMessage("");
@@ -282,13 +420,16 @@ export function TeamForm({
           const data = await jsonRequest(`/api/team/${restaurantId}`, {
             name: values.get("name"),
             email: values.get("email"),
-            role: manager ? "manager" : values.get("role"),
+            roles: manager ? ["manager"] : roles,
+            permissions: manager ? {} : permissions,
             ...(mode === "password"
               ? { password: values.get("password") }
               : {}),
           });
           setMessage(data.message);
           form.reset();
+          setRoles(["waiter"]);
+          setPermissions({});
           onSaved();
         } catch (e) {
           setError(e instanceof Error ? e.message : "Tente novamente");
@@ -309,13 +450,21 @@ export function TeamForm({
         <input name="email" type="email" required className={fieldClass} />
       </label>
       {!manager && (
-        <label className="block">
-          Função
-          <select name="role" className={fieldClass}>
-            <option value="waiter">Garçom</option>
-            <option value="kitchen">Cozinha</option>
-          </select>
-        </label>
+        <>
+          <RolePicker
+            value={roles}
+            onChange={(next) => {
+              setRoles(next);
+              setPermissions({});
+            }}
+          />
+          <details className="rounded-xl border p-3">
+            <summary className="cursor-pointer text-sm">Permissões (padrão do papel)</summary>
+            <div className="mt-3">
+              <PermissionPicker roles={roles} value={permissions} onChange={setPermissions} />
+            </div>
+          </details>
+        </>
       )}
       <label className="block">
         Tipo de acesso

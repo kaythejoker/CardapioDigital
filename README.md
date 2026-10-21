@@ -2,7 +2,7 @@
 
 MVP white label: cliente escaneia o QR, valida o PIN da mesa e envia pedidos à cozinha. Garçom, cozinha, gestor e revenda têm acessos separados. A [spec](docs/spec.md) define o escopo; [progresso e evidências](docs/progresso.md) registram a entrega.
 
-**Estado em 13/10/2026: etapas 1–8 concluídas e V0 publicada**, incluindo personalização por restaurante, refinamento dos painéis e favicon. O histórico inicial de setup não representa mais o estado da implementação.
+**Estado em 21/10/2026: V0 (etapas 1–8) e Fase 2 ([spec-fase2.md](docs/spec-fase2.md), 11 etapas) concluídas e publicadas.** A Fase 2 trouxe papéis múltiplos e permissões por pessoa, registro de operações e histórico, cancelamento por item, estoque, alertas sonoros, chamar garçom e pedir a conta, painel do bar, união de mesas, financeiro (pagamentos por forma, taxa de serviço, desconto, fechamento do dia), relatórios com CSV, pesquisa de satisfação, planos e assinaturas por revenda, suporte e ajuda, domínio próprio e comanda do cliente atualizada a cada 3 s. O histórico inicial de setup não representa mais o estado da implementação.
 
 **Produção:** https://cardapio-digital-sigma-ten.vercel.app
 **Equipe:** https://cardapio-digital-sigma-ten.vercel.app/app/login
@@ -56,6 +56,9 @@ npm run dev
 | APP_SURFACE | admin no painel; customer no cardápio; vazio no desenvolvimento conjunto |
 | NEXT_PUBLIC_ADMIN_URL | Origem do painel da equipe |
 | NEXT_PUBLIC_MENU_URL | Origem pública dos QR codes e links do cliente |
+| VERCEL_TOKEN | Token de conta da Vercel para registrar domínios próprios no projeto público; sem ele a tela só mostra as instruções de DNS |
+| VERCEL_PROJECT_ID_MENU | Projeto público (`cardapio-cliente`) onde os domínios são registrados |
+| VERCEL_TEAM_ID | Time `nutrivox` na Vercel |
 | DEMO_USER_PASSWORD | Senha da demonstração dos sócios, somente local |
 | SEED_USER_PASSWORD | Somente seed/testes locais; não enviar à Vercel |
 | SEED_RESELLER_PASSWORD | Senha própria da revenda existente, usada nos testes locais |
@@ -89,7 +92,7 @@ npm run test:e2e
 npm audit --omit=dev
 ```
 
-Os E2E usam o Supabase do .env.local, criam registros temporários identificáveis e removem esses registros em finally. Cobrem cliente/cozinha/garçom, segurança, implantação pelo painel, equipe, upload/PDF, prioridades e marca. SEED_USER_PASSWORD precisa corresponder às contas demo.
+Os E2E (13 cenários, um worker) usam o Supabase do .env.local, criam registros temporários identificáveis e removem esses registros em finally. Cobrem cliente/cozinha/garçom, segurança, implantação pelo painel, equipe, upload/PDF, prioridades e marca, e da Fase 2: estoque e cancelamento por item, chamadas e alertas, bar, união de mesas, financeiro, histórico/relatórios/pesquisa, assinaturas, domínio próprio (só local, pois depende do `Host`) e comanda em tempo real. SEED_USER_PASSWORD precisa corresponder às contas demo. Não rode limpeza do banco nem edite código durante a regressão: os testes dependem do servidor de desenvolvimento recompilar sem interrupção.
 
 Para testar produção:
 
@@ -128,7 +131,7 @@ Supabase Auth Site URL está em produção; callbacks /app/aceitar-convite autor
 
 ## Observações da revisão
 
-- RLS nas 15 tabelas públicas. Sessões/tentativas não concedem leitura direta ao cliente.
+- RLS nas 27 tabelas públicas (15 do MVP e 12 da Fase 2). Sessões/tentativas não concedem leitura direta ao cliente; as rotas do cliente anônimo usam RPCs com `app.actor = 'customer'`.
 - Zero alertas em dependências de produção. O audit completo mantém alertas transitivos de ferramentas em braces ([advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)); o downgrade major sugerido não foi aplicado.
 - O advisor mantém o aviso de proteção contra senhas vazadas, disponível no [plano Pro ou superior](https://supabase.com/docs/guides/auth/password-security). Senha mínima configurada: 12 caracteres.
-- Total de ativos representa a situação atual. Pagamentos, faturamento histórico, PDV, impressão de comandas e delivery estão fora do MVP.
+- Pagamentos são registrados à mão pela equipe (forma e valor); fechamento da conta pelo celular, Pix, gateway de cobrança, PDV, impressão de comandas e delivery ficaram fora (Fase 3).

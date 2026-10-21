@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { customerOrigin } from "./helpers";
 
 const BRASA = "20000000-0000-4000-8000-000000000001";
 test("PIN, idempotência, snapshot, adicionais, esgotado e comanda fechada via API", async ({
@@ -19,7 +20,7 @@ test("PIN, idempotência, snapshot, adicionais, esgotado e comanda fechada via A
   let tableId = "";
   let itemId = "";
   let categoryId = "";
-  const origin = process.env.QA_BASE_URL || "http://localhost:3000";
+  const origin = await customerOrigin();
   try {
     const { data: table, error } = await admin
       .from("tables")
@@ -81,7 +82,7 @@ test("PIN, idempotência, snapshot, adicionais, esgotado e comanda fechada via A
       }
     }
     expect(tabId).not.toBe("");
-    const endpoint = `/api/customer/brasa-bistro/${table.qr_token}`;
+    const endpoint = `${origin}/api/customer/brasa-bistro/${table.qr_token}`;
     const post = (context: typeof correct, data: unknown) =>
       context.request.post(endpoint, { headers: { Origin: origin }, data });
     const lines = [

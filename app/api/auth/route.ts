@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { canOpenManagerPanel } from "@/lib/permissions";
 
 export async function POST(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin)
@@ -31,14 +32,18 @@ export async function GET() {
   const [members, resellers] = await Promise.all([
     db
       .from("restaurant_members")
-      .select("restaurant_id,role,restaurants(name,slug)")
-      .eq("user_id", user.id),
+      .select("restaurant_id,role,roles,permissions,restaurants(name,slug)")
+      .eq("user_id", user.id)
+      .eq("active", true),
     db.from("reseller_members").select("reseller_id").eq("user_id", user.id),
   ]);
   return Response.json(
     {
       email: user.email,
-      members: members.data ?? [],
+      members: (members.data ?? []).map((m) => ({
+        ...m,
+        manager_panel: canOpenManagerPanel(m.roles ?? [], m.permissions),
+      })),
       resellers: resellers.data ?? [],
     },
     { headers: { "Cache-Control": "no-store" } },

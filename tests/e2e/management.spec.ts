@@ -75,8 +75,14 @@ test("revenda cria restaurante e gestor monta cardápio, equipe, imagem e QR", a
     userId = members![0].user_id;
     await login(manager, email, password);
     await manager.goto("/app/gestor");
+    const overview = manager.getByRole("heading", {
+      name: "Visão geral",
+      level: 2,
+      exact: true,
+    });
+    await expect(overview).toBeVisible();
     await expect(
-      manager.getByRole("heading", { name: `Bom dia, ${name}`, exact: true }),
+      overview.locator("..").getByText(name, { exact: true }),
     ).toBeVisible();
     await manager
       .getByRole("button", { name: "Cardápio", exact: true })
@@ -172,9 +178,7 @@ test("revenda cria restaurante e gestor monta cardápio, equipe, imagem e QR", a
     await manager
       .getByRole("button", { name: "Salvar regra da fila", exact: true })
       .click();
-    await expect(manager.getByRole("status")).toContainText(
-      "Alterações salvas",
-    );
+    await expect(manager.getByRole("status").filter({ hasText: "Alterações salvas" })).toBeVisible();
     const { data: settings } = await admin
       .from("kitchen_settings")
       .select("mode,max_wait_minutes")

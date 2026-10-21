@@ -1,10 +1,11 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   cookieOptions,
   customerSession,
+  deviceId,
   hashToken,
   sessionCookie,
 } from "@/lib/customer";
@@ -37,6 +38,22 @@ const command = z.discriminatedUnion("action", [
       .max(50),
   }),
   z.object({ action: z.literal("cancel"), order_id: z.uuid() }),
+  z.object({ action: z.literal("cancel_item"), item_id: z.uuid() }),
+  z.object({
+    action: z.literal("call"),
+    kind: z.enum(["garcom", "conta", "ajuda"]),
+    note: z.string().trim().max(80).optional(),
+  }),
+  z.object({ action: z.literal("cancel_call"), call_id: z.uuid() }),
+  z.object({
+    action: z.literal("survey"),
+    rating: z.number().int().min(1).max(5),
+    food_rating: z.number().int().min(1).max(5).nullable().default(null),
+    service_rating: z.number().int().min(1).max(5).nullable().default(null),
+    wait_rating: z.number().int().min(1).max(5).nullable().default(null),
+    tags: z.array(z.string().trim().min(1).max(40)).max(10).default([]),
+    comment: z.string().trim().max(300).default(""),
+  }),
 ]);
 
 export async function POST(
@@ -53,31 +70,72 @@ export async function POST(
   const db = createAdminClient();
   try {
     if (input.data.action === "pin") {
-      const jar = await cookies();
-      let device = jar.get("comanda_device")?.value;
-      if (!device || !z.uuid().safeParse(device).success) {
-        device = randomUUID();
-        jar.set("comanda_device", device, {
-          ...cookieOptions,
-          maxAge: 365 * 86400,
-        });
-      }
-      // Vercel supplies this header. Never accept an IP from the body.
-      const ip =
-        request.headers.get("x-vercel-forwarded-for")?.split(",")[0] || "local";
+      const device = (await deviceId(true))!;
       const token = randomBytes(32).toString("hex");
       const { data, error } = await db.rpc("verify_table_pin", {
         p_slug: slug,
         p_qr: qrToken,
         p_pin: input.data.pin,
-        p_device: hashToken(`${device}:${ip}`),
+        p_device: device,
         p_hash: hashToken(token),
         p_name: input.data.name,
       });
       if (error) throw error;
       if (data.error)
         return Response.json({ error: data.error }, { status: data.status });
-      jar.set(sessionCookie(qrToken), token, cookieOptions);
+      (await cookies()).set(sessionCookie(qrToken), token, cookieOptions);
+      return Response.json({ ok: true });
+    }
+    if (input.data.action === "survey") {
+      // A sessão já foi apagada ao fechar; o que vale é o convite de 24 h.
+      const token = (await cookies()).get(sessionCookie(qrToken))?.value;
+      if (!token)
+        return Response.json({ error: "A avaliação não está mais disponível" }, { status: 401 });
+      const { data, error } = await db.rpc("submit_survey", {
+        p_slug: slug,
+        p_qr: qrToken,
+        p_hash: hashToken(token),
+        p_rating: input.data.rating,
+        p_food: input.data.food_rating,
+        p_service: input.data.service_rating,
+        p_wait: input.data.wait_rating,
+        p_tags: input.data.tags,
+        p_comment: input.data.comment || null,
+      });
+      if (error)
+        return Response.json({ error: error.message }, { status: error.code === "28000" ? 401 : 409 });
+      return Response.json(data, { status: 201 });
+    }
+    if (input.data.action === "call" || input.data.action === "cancel_call") {
+      // Chamar o garçom funciona mesmo sem PIN (mesa livre), com limite por aparelho.
+      const device = (await deviceId(true))!;
+      const session = await customerSession(slug, qrToken);
+      if (input.data.action === "call") {
+        const { data, error } = await db.rpc("create_service_call", {
+          p_slug: slug,
+          p_qr: qrToken,
+          p_hash: session?.tokenHash ?? null,
+          p_device: device,
+          p_kind: input.data.kind,
+          p_note: input.data.note || null,
+        });
+        if (error) throw error;
+        if (data.error)
+          return Response.json({ error: data.error }, { status: data.status });
+        return Response.json(data, { status: data.already ? 200 : 201 });
+      }
+      const { data, error } = await db.rpc("cancel_service_call", {
+        p_slug: slug,
+        p_qr: qrToken,
+        p_hash: session?.tokenHash ?? null,
+        p_device: device,
+        p_call: input.data.call_id,
+      });
+      if (error || !data)
+        return Response.json(
+          { error: "Essa chamada já foi atendida" },
+          { status: 409 },
+        );
       return Response.json({ ok: true });
     }
     const session = await customerSession(slug, qrToken);
@@ -101,15 +159,28 @@ export async function POST(
         );
       return Response.json(data, { status: 201 });
     }
-    const { data, error } = await db.rpc("cancel_table_order", {
-      p_slug: slug,
-      p_qr: qrToken,
-      p_hash: session.tokenHash,
-      p_order: input.data.order_id,
-    });
+    const { data, error } =
+      input.data.action === "cancel"
+        ? await db.rpc("cancel_table_order", {
+            p_slug: slug,
+            p_qr: qrToken,
+            p_hash: session.tokenHash,
+            p_order: input.data.order_id,
+          })
+        : await db.rpc("cancel_table_order_item", {
+            p_slug: slug,
+            p_qr: qrToken,
+            p_hash: session.tokenHash,
+            p_item: input.data.item_id,
+          });
     if (error || !data)
       return Response.json(
-        { error: "Esse pedido não pode mais ser cancelado" },
+        {
+          error:
+            input.data.action === "cancel"
+              ? "Esse pedido não pode mais ser cancelado"
+              : "Esse item não pode mais ser cancelado",
+        },
         { status: 409 },
       );
     return Response.json({ ok: true });
@@ -138,12 +209,12 @@ export async function GET(
         { error: "A comanda foi fechada ou sua sessão expirou" },
         { status: 401 },
       );
-    const [data, guests] = await Promise.all([
+    const [data, guests, totals] = await Promise.all([
       readAll((start, end) =>
         session.db
           .from("orders")
           .select(
-            "id,guest_id,status,prep_minutes,total_cents,created_at,order_items(id,name_snapshot,unit_price_cents,quantity,note,modifiers_snapshot,shared)",
+            "id,guest_id,status,prep_minutes,total_cents,created_at,station,batch_id,order_items(id,name_snapshot,unit_price_cents,quantity,note,modifiers_snapshot,shared,cancelled_at)",
           )
           .eq("tab_id", session.tab.id)
           .order("created_at", { ascending: false })
@@ -155,6 +226,7 @@ export async function GET(
         .select("id,name,created_at,paid_cents")
         .eq("tab_id", session.tab.id)
         .order("created_at"),
+      session.db.rpc("tab_totals", { p_tab: session.tab.id }),
     ]);
     if (guests.error) throw guests.error;
     return Response.json(
@@ -165,6 +237,7 @@ export async function GET(
         total_cents: data
           .filter((o) => o.status !== "cancelado")
           .reduce((sum, o) => sum + o.total_cents, 0),
+        totals: totals.data ?? null,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

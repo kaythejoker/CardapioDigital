@@ -5,6 +5,7 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 ## Fonte da verdade
 
 - **[docs/spec.md](docs/spec.md)** — spec completa do MVP (papéis, fluxos, regras de negócio, 20 telas, arquitetura, tabelas, fases, critérios de aceite, perguntas em aberto).
+- **[docs/spec-fase2.md](docs/spec-fase2.md)** — spec da Fase 2 (2026-10-20): as funções da lista Mesa Click que faltam ou estão parciais, mais a pesquisa de satisfação, com modelo de dados, telas 21–35, ordem de construção em 11 etapas e critérios de aceite. O fechamento da conta pelo celular do cliente ficou de fora (ele só avisa o garçom). **As 9 decisões foram aprovadas e as 11 etapas implementadas e publicadas em 20–21/10/2026**; evidências em `docs/progresso.md`.
 - A seção **"Prompt 1 — Aplicação"** da spec é a instrução de construção: stack, modelo de dados, regras que não podem falhar, prioridade da fila, rotas, tokens visuais e a ordem das 8 etapas. Siga-a.
 - A seção **"Prompt 2 — Visual (ChatGPT)"** define as referências; as 7 imagens estão em `docs/referencias-visuais/`.
 - Original no claude.ai: https://claude.ai/artifact/KM3dTUAMjh1ZdTj1z6jZX7 (exportado em 2026-10-09, rev 13).
@@ -13,6 +14,7 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 
 - Construir em **8 etapas**. Ao fim de cada uma: rodar o projeto, conferir que funciona, mostrar um resumo curto do que foi feito e de como testar, e **esperar o ok do usuário** antes da próxima.
 - Em 2026-10-09 o usuário autorizou continuar **até terminar a spec**, sem precisar de novo ok entre etapas. **Etapas 1–8 concluídas**, com os ajustes autorizados de 10/10; consultar `docs/progresso.md` para evidências. Não reiniciar a implementação por etapas ao abrir este repositório em outra máquina.
+- Em 2026-10-20 o usuário aprovou as 9 decisões da `docs/spec-fase2.md` e mandou implementar até o fim, validando cada etapa. **Fase 2 concluída em 21/10/2026** (11 etapas, 10 migrations novas, 13 E2E, 247 verificações no `db:check`), publicada nos dois projetos Vercel. O que ficou pendente do lado do usuário: cadastrar `VERCEL_TOKEN` (com `VERCEL_PROJECT_ID_MENU` e `VERCEL_TEAM_ID`) nas variáveis do projeto `cardapio-digital` para o registro automático de domínio próprio; sem ele as telas só mostram as instruções de DNS.
 - Não implementar nada fora do escopo do MVP sem perguntar. Se algo estiver ambíguo, perguntar antes de decidir.
 - Toda a interface e a comunicação com o usuário são em **português do Brasil**.
 - Valores em centavos (inteiros), moeda BRL, fuso `America/Sao_Paulo`.

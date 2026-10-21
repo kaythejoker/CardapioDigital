@@ -14,7 +14,13 @@ export type SplitOrder = {
   guest_id: string | null;
   status: string;
   created_at: string;
-  order_items: { unit_price_cents: number; quantity: number; shared?: boolean }[];
+  order_items: {
+    unit_price_cents: number;
+    quantity: number;
+    shared?: boolean;
+    /** Item cancelado individualmente não entra na conta. */
+    cancelled_at?: string | null;
+  }[];
 };
 export type PersonShare = {
   /** null = pedidos feitos antes da divisão por pessoa (sem nome). */
@@ -45,6 +51,7 @@ export function splitTab(guests: SplitGuest[], orders: SplitOrder[]) {
       ? order.guest_id
       : null;
     for (const item of order.order_items) {
+      if (item.cancelled_at) continue;
       const cents = item.unit_price_cents * item.quantity;
       total += cents;
       if (!item.shared || owner === null) {

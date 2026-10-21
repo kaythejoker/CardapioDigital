@@ -11,6 +11,10 @@ import {
   panelClass,
   TeamForm,
 } from "@/components/admin-ui";
+import { PlansView, SubscriptionPanel, type Plan, type Subscription, type SubscriptionPayment } from "@/components/subscriptions";
+import { STATUS_LABELS, type Access } from "@/lib/features";
+import { DomainPanel } from "@/components/domains";
+import { money } from "@/lib/menu-types";
 
 type ResellerData = {
   reseller: {
@@ -20,7 +24,13 @@ type ResellerData = {
     logo_url: string | null;
     primary_color: string;
     domain: string | null;
+    support_whatsapp?: string | null;
+    support_email?: string | null;
+    support_hours?: string | null;
+    domain_status?: string | null;
+    domain_error?: string | null;
   };
+  domains_configured?: boolean;
   restaurants: {
     id: string;
     name: string;
@@ -28,6 +38,12 @@ type ResellerData = {
     status: "active" | "inactive";
     created_at: string;
   }[];
+  /** Média de satisfação dos últimos 30 dias por restaurante. */
+  ratings?: Record<string, { avg: number | null; responses: number }>;
+  plans: Plan[];
+  subscriptions: Subscription[];
+  subscription_payments: SubscriptionPayment[];
+  access: Record<string, Access | null>;
 };
 export function Reseller() {
   const [data, setData] = useState<ResellerData | null>(null);
@@ -36,6 +52,7 @@ export function Reseller() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
   const refresh = useCallback(async () => {
     try {
       setData(await jsonRequest("/api/revenda"));
@@ -73,13 +90,23 @@ export function Reseller() {
       </main>
     );
   const active = data.restaurants.filter((r) => r.status === "active").length;
+  const statusOf = (id: string) => data.access?.[id]?.status ?? "ativa";
+  const billing = data.restaurants.filter((r) => ["ativa", "teste", "atrasada"].includes(statusOf(r.id)));
+  // Receita recorrente mensal: planos ativos (anual dividido por 12).
+  const mrr = billing.reduce((sum, r) => {
+    const plan = data.plans.find((p) => p.id === data.subscriptions.find((s) => s.restaurant_id === r.id)?.plan_id);
+    return sum + (plan ? (plan.billing_period === "anual" ? Math.round(plan.price_cents / 12) : plan.price_cents) : 0);
+  }, 0);
+  const shown = data.restaurants.filter((r) => !statusFilter || statusOf(r.id) === statusFilter);
   return (
     <AdminShell
       brand={data.reseller}
       title={
         view === "brand"
           ? "Sua marca, em cada restaurante"
-          : "Seus restaurantes"
+          : view === "plans"
+            ? "Planos e módulos"
+            : "Seus restaurantes"
       }
       active={view}
       onNavigate={(v) => {
@@ -87,6 +114,7 @@ export function Reseller() {
         setInvite(null);
       }}
       revenda
+      support={data.reseller}
     >
       {error && (
         <p
@@ -104,21 +132,33 @@ export function Reseller() {
           {message}
         </p>
       )}
+      {view === "plans" && (
+        <PlansView plans={data.plans} subscriptions={data.subscriptions} busy={busy} onSave={save} />
+      )}
       {view === "restaurants" ? (
         <>
-          <div className="reseller-stats mb-6 grid gap-4 sm:grid-cols-2">
+          <div className="reseller-stats mb-6 grid gap-4 sm:grid-cols-3">
             <section className={panelClass}>
               <p className="text-muted-foreground">Restaurantes ativos</p>
               <b className="mt-3 block font-heading text-4xl">{active}</b>
               <p className="mt-2 text-sm text-muted-foreground">
-                Situação atual para acompanhamento do mês
+                {data.restaurants.filter((r) => statusOf(r.id) === "teste").length} em teste • {data.restaurants.filter((r) => ["atrasada", "suspensa"].includes(statusOf(r.id))).length} com pendência
               </p>
+            </section>
+            <section className={panelClass}>
+              <p className="text-muted-foreground">Receita recorrente do mês</p>
+              <b className="mt-3 block font-heading text-4xl">{money(mrr)}</b>
+              <p className="mt-2 text-sm text-muted-foreground">Soma dos planos ativos e em teste</p>
             </section>
             <section className={panelClass}>
               <p className="text-muted-foreground">Total de restaurantes</p>
               <b className="mt-3 block font-heading text-4xl">
                 {data.restaurants.length}
               </b>
+              <select aria-label="Filtrar por status da assinatura" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2 text-sm">
+                <option value="">Todos os status</option>
+                {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
             </section>
           </div>
           <form
@@ -192,7 +232,7 @@ export function Reseller() {
             </section>
           )}
           <div className="grid gap-4 lg:grid-cols-2">
-            {data.restaurants.map((r) => (
+            {shown.map((r) => (
               <article key={r.id} className={`${panelClass} restaurant-card`}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -205,7 +245,14 @@ export function Reseller() {
                     {r.status === "active" ? "Ativo" : "Inativo"}
                   </span>
                 </div>
-                <p className="my-4 text-sm text-muted-foreground">/{r.slug}</p>
+                <p className="my-4 text-sm text-muted-foreground">
+                  /{r.slug}
+                  {data.ratings?.[r.id]?.avg != null && (
+                    <span className="ml-3" aria-label={`Satisfação ${data.ratings[r.id].avg} em 30 dias`}>
+                      ★ {Number(data.ratings[r.id].avg).toFixed(1)} <small>({data.ratings[r.id].responses} em 30 dias)</small>
+                    </span>
+                  )}
+                </p>
                 <div className="flex flex-wrap gap-4 text-sm">
                   <Link
                     href={`/app/gestor?restaurant_id=${r.id}`}
@@ -237,13 +284,35 @@ export function Reseller() {
                     {r.status === "active" ? "Desativar" : "Ativar"}
                   </button>
                 </div>
+                <SubscriptionPanel
+                  restaurantId={r.id}
+                  access={data.access?.[r.id] ?? undefined}
+                  subscription={data.subscriptions.find((s) => s.restaurant_id === r.id)}
+                  plans={data.plans}
+                  payments={data.subscription_payments.filter((p) => p.subscription_id === data.subscriptions.find((s) => s.restaurant_id === r.id)?.id)}
+                  busy={busy}
+                  onSave={save}
+                />
               </article>
             ))}
           </div>
         </>
-      ) : (
-        <BrandForm reseller={data.reseller} busy={busy} onSave={save} />
-      )}
+      ) : view === "brand" ? (
+        <div className="space-y-6">
+          <BrandForm reseller={data.reseller} busy={busy} onSave={save} />
+          <div className="max-w-2xl">
+            <DomainPanel
+              kind="reseller"
+              domain={data.reseller.domain}
+              status={data.reseller.domain_status ?? null}
+              error={data.reseller.domain_error ?? null}
+              configured={data.domains_configured ?? false}
+              placeholder="cardapio.suamarca.com.br"
+              onChanged={() => void refresh()}
+            />
+          </div>
+        </div>
+      ) : null}
     </AdminShell>
   );
 }
@@ -268,9 +337,12 @@ function BrandForm({
           action: "brand",
           name: form.get("name"),
           brand_name: form.get("brand_name"),
-          domain: form.get("domain"),
+          domain: reseller.domain ?? "",
           primary_color: color,
           logo_url: logo,
+          support_whatsapp: String(form.get("support_whatsapp") || "").replace(/[^\d+]/g, ""),
+          support_email: form.get("support_email"),
+          support_hours: form.get("support_hours"),
         });
       }}
     >
@@ -314,18 +386,25 @@ function BrandForm({
           <span>{color.toUpperCase()}</span>
         </div>
       </label>
-      <label className="block">
-        Domínio
-        <input
-          name="domain"
-          placeholder="comanda.com.br"
-          defaultValue={reseller.domain || ""}
-          className={fieldClass}
-        />
-      </label>
+      <fieldset className="space-y-4 rounded-2xl border p-4">
+        <legend className="px-2 font-semibold">Suporte aos restaurantes</legend>
+        <p className="text-sm text-muted-foreground">Aparece no botão Ajuda de todos os painéis dos seus restaurantes.</p>
+        <label className="block">
+          WhatsApp (com DDI e DDD, só números)
+          <input name="support_whatsapp" inputMode="tel" placeholder="5511999999999" defaultValue={reseller.support_whatsapp ?? ""} className={fieldClass} aria-label="WhatsApp de suporte" />
+        </label>
+        <label className="block">
+          E-mail de suporte
+          <input name="support_email" type="email" defaultValue={reseller.support_email ?? ""} className={fieldClass} aria-label="E-mail de suporte" />
+        </label>
+        <label className="block">
+          Horário de atendimento
+          <input name="support_hours" maxLength={120} placeholder="Seg a sex, 9h às 18h" defaultValue={reseller.support_hours ?? ""} className={fieldClass} aria-label="Horário de atendimento" />
+        </label>
+      </fieldset>
       <p className="text-sm text-muted-foreground">
         O nome, o logo e a cor aparecem em todos os restaurantes da revenda. O
-        domínio precisa estar conectado à hospedagem para servir o site.
+        domínio é cadastrado abaixo, em &ldquo;Domínio da revenda&rdquo;.
       </p>
       <button disabled={busy} className={actionClass}>
         Salvar marca
