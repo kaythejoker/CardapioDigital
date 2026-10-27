@@ -7,70 +7,87 @@ import { Download, Star } from "lucide-react";
 import { actionClass, fieldClass, jsonRequest, panelClass } from "@/components/admin-ui";
 import { money, PAYMENT_LABELS, STATION_LABELS, type PaymentMethod, type Station, type TabTotals } from "@/lib/menu-types";
 import { DAY_LABEL, PERIODS } from "@/lib/periods";
+import { LOCALE_TAGS, msg, type Locale, type Translate } from "@/lib/i18n";
+import { useI18n } from "@/components/i18n";
 
 export type PeriodState = { period: string; from?: string; to?: string };
 export const periodQuery = (p: PeriodState) =>
   `period=${encodeURIComponent(p.period)}${p.period === "custom" ? `&from=${p.from ?? ""}&to=${p.to ?? ""}` : ""}`;
 
 export const ACTION_LABELS: Record<string, string> = {
-  mesa_aberta: "Mesa aberta",
-  pin_novo: "PIN novo",
-  comanda_fechada: "Comanda fechada",
-  comandas_unidas: "Comandas unidas",
-  mesa_unida: "Mesa unida",
-  mesa_separada: "Mesa separada",
-  pedido_enviado: "Pedido enviado",
-  pedido_em_preparo: "Pedido em preparo",
-  pedido_pronto: "Pedido pronto",
-  pedido_entregue: "Pedido entregue",
-  pedido_cancelado: "Pedido cancelado",
-  pedido_fixado: "Pedido fixado",
-  pedido_desafixado: "Pedido desafixado",
-  item_cancelado: "Item cancelado",
-  pagamento_registrado: "Pagamento registrado",
-  pagamento_estornado: "Pagamento estornado",
-  pagamento_marcado: "Pagamento marcado",
-  pagamento_desfeito: "Pagamento desfeito",
-  desconto_aplicado: "Desconto aplicado",
-  desconto_removido: "Desconto removido",
-  taxa_retirada: "Taxa de serviço retirada",
-  taxa_aplicada: "Taxa de serviço aplicada",
-  item_esgotado: "Item esgotado",
-  item_reposto: "Item reposto",
-  item_ativado: "Item ativado",
-  item_desativado: "Item desativado",
-  preco_alterado: "Preço alterado",
-  estoque_reposto: "Estoque reposto",
-  estoque_ajustado: "Estoque ajustado",
-  membro_adicionado: "Pessoa adicionada",
-  membro_removido: "Pessoa removida",
-  membro_alterado: "Acesso alterado",
-  chamada_criada: "Chamada do cliente",
-  chamada_atendida: "Chamada atendida",
-  chamada_expirada: "Chamada expirada",
-  chamada_cancelada: "Chamada cancelada",
-  dia_fechado: "Dia fechado",
-  avaliacao_enviada: "Avaliação enviada",
+  mesa_aberta: msg("Mesa aberta"),
+  pin_novo: msg("PIN novo"),
+  pin_exigido: msg("PIN da mesa exigido"),
+  pin_dispensado: msg("PIN da mesa dispensado"),
+  comanda_fechada: msg("Comanda fechada"),
+  comandas_unidas: msg("Comandas unidas"),
+  mesa_unida: msg("Mesa unida"),
+  mesa_separada: msg("Mesa separada"),
+  pedido_enviado: msg("Pedido enviado"),
+  pedido_em_preparo: msg("Pedido em preparo"),
+  pedido_pronto: msg("Pedido pronto"),
+  pedido_entregue: msg("Pedido entregue"),
+  pedido_cancelado: msg("Pedido cancelado"),
+  pedido_fixado: msg("Pedido fixado"),
+  pedido_desafixado: msg("Pedido desafixado"),
+  item_cancelado: msg("Item cancelado"),
+  pagamento_registrado: msg("Pagamento registrado"),
+  pagamento_estornado: msg("Pagamento estornado"),
+  pagamento_marcado: msg("Pagamento marcado"),
+  pagamento_desfeito: msg("Pagamento desfeito"),
+  desconto_aplicado: msg("Desconto aplicado"),
+  desconto_removido: msg("Desconto removido"),
+  taxa_retirada: msg("Taxa de serviço retirada"),
+  taxa_aplicada: msg("Taxa de serviço aplicada"),
+  item_esgotado: msg("Item esgotado"),
+  item_reposto: msg("Item reposto"),
+  item_ativado: msg("Item ativado"),
+  item_desativado: msg("Item desativado"),
+  preco_alterado: msg("Preço alterado"),
+  estoque_reposto: msg("Estoque reposto"),
+  estoque_ajustado: msg("Estoque ajustado"),
+  membro_adicionado: msg("Pessoa adicionada"),
+  membro_removido: msg("Pessoa removida"),
+  membro_alterado: msg("Acesso alterado"),
+  chamada_criada: msg("Chamada do cliente"),
+  chamada_atendida: msg("Chamada atendida"),
+  chamada_expirada: msg("Chamada expirada"),
+  chamada_cancelada: msg("Chamada cancelada"),
+  dia_fechado: msg("Dia fechado"),
+  avaliacao_enviada: msg("Avaliação enviada"),
+  // Fase 3 (spec-fase3.md).
+  pedidos_pausados: msg("Pedidos pausados"),
+  pedidos_retomados: msg("Pedidos retomados"),
+  mesa_bloqueada: msg("Mesa bloqueada para pedidos"),
+  mesa_desbloqueada: msg("Mesa desbloqueada"),
+  item_bloqueado: msg("Item bloqueado"),
+  item_desbloqueado: msg("Item desbloqueado"),
+  espera_adicionada: msg("Grupo entrou na espera"),
+  espera_chamado: msg("Grupo chamado"),
+  espera_aguardando: msg("Grupo voltou para a fila"),
+  espera_sentado: msg("Grupo sentado"),
+  espera_desistiu: msg("Grupo desistiu"),
 };
-const ROLE_LABELS: Record<string, string> = { manager: "Gestor", waiter: "Garçom", kitchen: "Cozinha", bar: "Bar", reseller: "Revenda", customer: "Cliente", system: "Sistema", unknown: "—" };
-const STATUS_LABELS: Record<string, string> = { recebido: "Recebido", em_preparo: "Em preparo", pronto: "Pronto", entregue: "Entregue", cancelado: "Cancelado" };
+const ROLE_LABELS: Record<string, string> = { manager: msg("Gestor"), waiter: msg("Garçom"), kitchen: msg("Cozinha"), bar: msg("Bar"), reseller: msg("Revenda"), customer: msg("Cliente"), system: msg("Sistema"), unknown: "—" };
+const STATUS_LABELS: Record<string, string> = { recebido: msg("Recebido"), em_preparo: msg("Em preparo"), pronto: msg("Pronto"), entregue: msg("Entregue"), cancelado: msg("Cancelado") };
+const CALL_STATUS: Record<string, string> = { aberta: msg("aberta"), atendida: msg("atendida"), expirada: msg("expirada"), cancelada: msg("cancelada") };
 
-export const when = (iso: string) =>
-  new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-const time = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+export const when = (iso: string, locale: Locale = "pt") =>
+  new Date(iso).toLocaleString(LOCALE_TAGS[locale], { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const time = (iso: string, locale: Locale = "pt") =>
+  new Date(iso).toLocaleTimeString(LOCALE_TAGS[locale], { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
 
 export function PeriodPicker({ value, onChange }: { value: PeriodState; onChange: (next: PeriodState) => void }) {
+  const { t } = useI18n();
   return (
     <div className="period-picker">
       <div className="flex flex-wrap gap-2">
         {PERIODS.map((p) => (
           <button key={p.key} aria-pressed={value.period === p.key} onClick={() => onChange({ period: p.key })} className="period-button">
-            {p.label}
+            {t(p.label)}
           </button>
         ))}
-        <button aria-pressed={value.period === "custom"} onClick={() => onChange({ period: "custom", from: value.from, to: value.to })} className="period-button">
-          Intervalo
-        </button>
+        <button aria-pressed={value.period === "custom"} onClick={() => onChange({ period: "custom", from: value.from, to: value.to })} className="period-button">{t("Intervalo")}</button>
       </div>
       {value.period === "custom" && (
         <form
@@ -81,9 +98,9 @@ export function PeriodPicker({ value, onChange }: { value: PeriodState; onChange
             onChange({ period: "custom", from: String(f.get("from")), to: String(f.get("to")) });
           }}
         >
-          <label className="text-sm">De<input name="from" type="date" required defaultValue={value.from} className={fieldClass} aria-label="Data inicial" /></label>
-          <label className="text-sm">Até<input name="to" type="date" required defaultValue={value.to} className={fieldClass} aria-label="Data final" /></label>
-          <button className={actionClass}>Aplicar</button>
+          <label className="text-sm">{t("De")}<input name="from" type="date" required defaultValue={value.from} className={fieldClass} aria-label={t("Data inicial")} /></label>
+          <label className="text-sm">{t("Até")}<input name="to" type="date" required defaultValue={value.to} className={fieldClass} aria-label={t("Data final")} /></label>
+          <button className={actionClass}>{t("Aplicar")}</button>
         </form>
       )}
     </div>
@@ -107,58 +124,95 @@ export type TabDetailData = {
 };
 
 export function TabDetail({ data, onClose }: { data: TabDetailData; onClose: () => void }) {
-  const name = (id: string | null) => (id ? data.names[id] ?? "Equipe" : "—");
-  const guest = (id: string | null) => data.guests.find((g) => g.id === id)?.name ?? (id ? "Pessoa" : "Mesa");
-  const t = data.tab;
+  const { locale, t } = useI18n();
+  const name = (id: string | null) => (id ? data.names[id] ?? t("Equipe") : "—");
+  const guest = (id: string | null) => data.guests.find((g) => g.id === id)?.name ?? (id ? t("Pessoa") : t("Mesa"));
+  const at = (iso: string) => time(iso, locale);
+  const tab = data.tab;
+  const labels = tab.table + (tab.tables.length ? ` + ${tab.tables.map((x) => x.label).join(", ")}` : "");
   return (
-    <section className={`${panelClass} tab-detail`} aria-label={`Comanda da mesa ${t.table}`}>
+    <section className={`${panelClass} tab-detail`} aria-label={t("Comanda da mesa {label}", { label: tab.table })}>
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-heading text-2xl">Mesa {t.table}{t.tables.length ? ` + ${t.tables.map((x) => x.label).join(", ")}` : ""}</h3>
+          <h3 className="font-heading text-2xl">{t("Mesa {label}", { label: labels })}</h3>
           <p className="text-sm text-muted-foreground">
-            Aberta {when(t.opened_at)} por {name(t.opened_by)}{t.closed_at ? ` • fechada ${when(t.closed_at)} por ${name(t.closed_by)}` : " • ainda aberta"}
-            {t.merged_into && " • unida a outra comanda"}
+            {t("Aberta {when} por {name}", { when: when(tab.opened_at, locale), name: name(tab.opened_by) })}
+            {" • "}
+            {tab.closed_at ? t("fechada {when} por {name}", { when: when(tab.closed_at, locale), name: name(tab.closed_by) }) : t("ainda aberta")}
+            {tab.merged_into && ` • ${t("unida a outra comanda")}`}
           </p>
         </div>
-        <button className="rounded-xl border px-3 py-2 text-sm" onClick={onClose}>Fechar detalhe</button>
+        <button className="rounded-xl border px-3 py-2 text-sm" onClick={onClose}>{t("Fechar detalhe")}</button>
       </header>
       <div className="tab-detail-grid">
         <div>
-          <h4>Pessoas</h4>
-          {data.guests.map((g) => <p key={g.id}>{g.name} <small>entrou {time(g.created_at)}{g.paid_cents != null ? ` • pagou ${money(g.paid_cents)}` : ""}</small></p>)}
-          {!data.guests.length && <p className="text-muted-foreground">Sem nome.</p>}
-          <h4>Pagamentos</h4>
-          {data.payments.map((p) => (
-            <p key={p.id} className={p.voided_at ? "line-through text-muted-foreground" : ""}>
-              {PAYMENT_LABELS[p.method]} {money(p.amount_cents)} • {guest(p.guest_id)} <small>{time(p.created_at)} por {name(p.received_by)}{p.voided_at ? ` • estornado${p.void_reason ? ` (${p.void_reason})` : ""}` : ""}</small>
+          <h4>{t("Pessoas")}</h4>
+          {data.guests.map((g) => (
+            <p key={g.id}>
+              {g.name} <small>{t("entrou {time}", { time: at(g.created_at) })}{g.paid_cents != null ? ` • ${t("pagou {value}", { value: money(g.paid_cents) })}` : ""}</small>
             </p>
           ))}
-          {!data.payments.length && <p className="text-muted-foreground">Nenhum pagamento.</p>}
-          <h4>Totais</h4>
-          <p>Itens {money(t.totals.items_cents)} • Taxa {money(t.totals.fee_cents)}{t.totals.fee_waived ? " (retirada)" : ""} • Desconto {money(t.totals.discount_cents)}{t.totals.discount_reason ? ` (${t.totals.discount_reason})` : ""}</p>
-          <p><b>Total {money(t.totals.due_cents)}</b> • pago {money(t.totals.paid_cents)}</p>
-          {data.calls.length > 0 && <><h4>Chamadas</h4>{data.calls.map((c) => <p key={c.id}>{c.kind === "conta" ? "Pediu a conta" : c.kind === "garcom" ? "Chamou o garçom" : `Outro: ${c.note ?? ""}`} <small>{time(c.created_at)} • {c.status}{c.attended_by ? ` por ${name(c.attended_by)}` : ""}</small></p>)}</>}
-          {data.surveys.length > 0 && <><h4>Avaliações</h4>{data.surveys.map((s) => <p key={s.guest_id}>{guest(s.guest_id)}: {"★".repeat(s.rating)}{"☆".repeat(5 - s.rating)} {s.comment && <small>“{s.comment}”</small>}</p>)}</>}
+          {!data.guests.length && <p className="text-muted-foreground">{t("Sem nome.")}</p>}
+          <h4>{t("Pagamentos")}</h4>
+          {data.payments.map((p) => (
+            <p key={p.id} className={p.voided_at ? "line-through text-muted-foreground" : ""}>
+              {t(PAYMENT_LABELS[p.method])} {money(p.amount_cents)} • {guest(p.guest_id)}{" "}
+              <small>
+                {t("{time} por {name}", { time: at(p.created_at), name: name(p.received_by) })}
+                {p.voided_at ? ` • ${t("estornado")}${p.void_reason ? ` (${p.void_reason})` : ""}` : ""}
+              </small>
+            </p>
+          ))}
+          {!data.payments.length && <p className="text-muted-foreground">{t("Nenhum pagamento.")}</p>}
+          <h4>{t("Totais")}</h4>
+          <p>
+            {t("Itens {value}", { value: money(tab.totals.items_cents) })} • {t("Taxa {value}", { value: money(tab.totals.fee_cents) })}
+            {tab.totals.fee_waived ? ` ${t("(retirada)")}` : ""} • {t("Desconto {value}", { value: money(tab.totals.discount_cents) })}
+            {tab.totals.discount_reason ? ` (${tab.totals.discount_reason})` : ""}
+          </p>
+          <p>
+            <b>{t("Total {value}", { value: money(tab.totals.due_cents) })}</b> • {t("pago {value}", { value: money(tab.totals.paid_cents) })}
+          </p>
+          {data.calls.length > 0 && (
+            <>
+              <h4>{t("Chamadas")}</h4>
+              {data.calls.map((c) => (
+                <p key={c.id}>
+                  {c.kind === "conta" ? t("Pediu a conta") : c.kind === "garcom" ? t("Chamou o garçom") : t("Outro: {note}", { note: c.note ?? "" })}{" "}
+                  <small>
+                    {at(c.created_at)} • {CALL_STATUS[c.status] ? t(CALL_STATUS[c.status]) : c.status}
+                    {c.attended_by ? ` ${t("por {name}", { name: name(c.attended_by) })}` : ""}
+                  </small>
+                </p>
+              ))}
+            </>
+          )}
+          {data.surveys.length > 0 && <><h4>{t("Avaliações")}</h4>{data.surveys.map((s) => <p key={s.guest_id}>{guest(s.guest_id)}: {"★".repeat(s.rating)}{"☆".repeat(5 - s.rating)} {s.comment && <small>“{s.comment}”</small>}</p>)}</>}
         </div>
         <div>
-          <h4>Pedidos</h4>
+          <h4>{t("Pedidos")}</h4>
           {data.orders.map((o) => (
             <div key={o.id} className="tab-detail-order">
-              <p><b>{time(o.created_at)} • {guest(o.guest_id)} • {STATION_LABELS[o.station] ?? o.station} • {STATUS_LABELS[o.status] ?? o.status}</b> <span>{money(o.total_cents)}</span></p>
-              {o.cancel_reason && <small>Motivo: {o.cancel_reason}{o.cancelled_by ? ` (${name(o.cancelled_by)})` : ""}</small>}
+              <p><b>{at(o.created_at)} • {guest(o.guest_id)} • {STATION_LABELS[o.station] ? t(STATION_LABELS[o.station]) : o.station} • {STATUS_LABELS[o.status] ? t(STATUS_LABELS[o.status]) : o.status}</b> <span>{money(o.total_cents)}</span></p>
+              {o.cancel_reason && <small>{t("Motivo: {reason}", { reason: t(o.cancel_reason) })}{o.cancelled_by ? ` (${name(o.cancelled_by)})` : ""}</small>}
               {o.items.map((i) => (
                 <p key={i.id} className={i.cancelled_at ? "line-through text-muted-foreground" : ""}>
-                  {i.quantity}× {i.name}{i.modifiers?.length ? ` (${i.modifiers.map((m) => m.name).join(", ")})` : ""}{i.note ? ` • ${i.note}` : ""}{i.shared ? " • dividido" : ""}
-                  {i.cancelled_at && <small> cancelado{i.cancel_reason ? ` — ${i.cancel_reason}` : ""}{i.cancelled_by ? ` (${name(i.cancelled_by)})` : ""}</small>}
+                  {i.quantity}× {i.name}{i.modifiers?.length ? ` (${i.modifiers.map((m) => m.name).join(", ")})` : ""}{i.note ? ` • ${i.note}` : ""}{i.shared ? ` • ${t("dividido")}` : ""}
+                  {i.cancelled_at && <small> {t("cancelado")}{i.cancel_reason ? ` — ${t(i.cancel_reason)}` : ""}{i.cancelled_by ? ` (${name(i.cancelled_by)})` : ""}</small>}
                   <span> {money(i.unit_price_cents * i.quantity)}</span>
                 </p>
               ))}
             </div>
           ))}
-          {!data.orders.length && <p className="text-muted-foreground">Nenhum pedido.</p>}
-          <h4>Linha do tempo</h4>
+          {!data.orders.length && <p className="text-muted-foreground">{t("Nenhum pedido.")}</p>}
+          <h4>{t("Linha do tempo")}</h4>
           <ol className="tab-detail-log">
-            {data.log.map((l) => <li key={l.id}><small>{time(l.created_at)}</small> {ACTION_LABELS[l.action] ?? l.action} <small>— {l.actor_id ? name(l.actor_id) : ROLE_LABELS[l.actor_role] ?? l.actor_role}</small></li>)}
+            {data.log.map((l) => (
+              <li key={l.id}>
+                <small>{at(l.created_at)}</small> {ACTION_LABELS[l.action] ? t(ACTION_LABELS[l.action]) : l.action}{" "}
+                <small>— {l.actor_id ? name(l.actor_id) : ROLE_LABELS[l.actor_role] ? t(ROLE_LABELS[l.actor_role]) : l.actor_role}</small>
+              </li>
+            ))}
           </ol>
         </div>
       </div>
@@ -167,6 +221,7 @@ export function TabDetail({ data, onClose }: { data: TabDetailData; onClose: () 
 }
 
 export function HistoryView({ restaurantId, canViewReports }: { restaurantId: string; canViewReports: boolean }) {
+  const { locale, t } = useI18n();
   const [period, setPeriod] = useState<PeriodState>({ period: "today" });
   const [tab, setTab] = useState<"comandas" | "operacoes">("comandas");
   const [data, setData] = useState<{ tabs: HistoryTab[]; names: Record<string, string> } | null>(null);
@@ -181,61 +236,61 @@ export function HistoryView({ restaurantId, canViewReports }: { restaurantId: st
       if (tab === "comandas") setData(await jsonRequest(`/api/history/${restaurantId}?${periodQuery(period)}`));
       else setAudit(await jsonRequest(`/api/history/${restaurantId}?${periodQuery(period)}&audit=1${filterAction ? `&action=${filterAction}` : ""}`));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível carregar");
+      setError(e instanceof Error ? e.message : msg("Não foi possível carregar"));
     }
   }, [restaurantId, period, tab, filterAction]);
   useEffect(() => {
-    const t = setTimeout(load, 0);
-    return () => clearTimeout(t);
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
   }, [load]);
   const open = async (tabId: string) => {
     try {
       setDetail(await jsonRequest(`/api/history/${restaurantId}?tab_id=${tabId}`));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível carregar");
+      setError(e instanceof Error ? e.message : msg("Não foi possível carregar"));
     }
   };
-  const tabs = (data?.tabs ?? []).filter((t) => !filterTable || t.table === filterTable || t.tables.includes(filterTable));
-  const totalDue = tabs.reduce((s, t) => s + (t.totals?.due_cents ?? 0), 0);
+  const tabs = (data?.tabs ?? []).filter((row) => !filterTable || row.table === filterTable || row.tables.includes(filterTable));
+  const totalDue = tabs.reduce((s, row) => s + (row.totals?.due_cents ?? 0), 0);
   return (
     <div className="space-y-5">
       <PeriodPicker value={period} onChange={setPeriod} />
-      {!canViewReports && <p className="text-sm text-muted-foreground">Você vê as comandas fechadas de hoje.</p>}
+      {!canViewReports && <p className="text-sm text-muted-foreground">{t("Você vê as comandas fechadas de hoje.")}</p>}
       {canViewReports && (
         <nav className="flex gap-2">
-          <button className="period-button" aria-pressed={tab === "comandas"} onClick={() => setTab("comandas")}>Comandas</button>
-          <button className="period-button" aria-pressed={tab === "operacoes"} onClick={() => setTab("operacoes")}>Operações</button>
+          <button className="period-button" aria-pressed={tab === "comandas"} onClick={() => setTab("comandas")}>{t("Comandas")}</button>
+          <button className="period-button" aria-pressed={tab === "operacoes"} onClick={() => setTab("operacoes")}>{t("Operações")}</button>
         </nav>
       )}
-      {error && <p role="alert" className="rounded-xl bg-destructive p-4 text-white">{error}</p>}
+      {error && <p role="alert" className="rounded-xl bg-destructive p-4 text-white">{t(error)}</p>}
       {detail && <TabDetail data={detail} onClose={() => setDetail(null)} />}
       {tab === "comandas" && data && (
         <section className={panelClass}>
           <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="font-heading text-2xl">Comandas fechadas</h3>
+            <h3 className="font-heading text-2xl">{t("Comandas fechadas")}</h3>
             <div className="flex items-center gap-3 text-sm">
-              <input placeholder="Filtrar por mesa" aria-label="Filtrar por mesa" value={filterTable} onChange={(e) => setFilterTable(e.target.value)} className="rounded-xl border px-3 py-2" />
-              <span className="text-muted-foreground">{tabs.length} comandas • {money(totalDue)}</span>
+              <input placeholder={t("Filtrar por mesa")} aria-label={t("Filtrar por mesa")} value={filterTable} onChange={(e) => setFilterTable(e.target.value)} className="rounded-xl border px-3 py-2" />
+              <span className="text-muted-foreground">{t("{n} comandas • {value}", { n: tabs.length, value: money(totalDue) })}</span>
             </div>
           </header>
           <div className="queue-table-wrap">
             <table className="queue-table">
-              <thead><tr><th>Mesa</th><th>Fechada</th><th>Pessoas</th><th>Pedidos</th><th>Cancelados</th><th>Total</th><th>Pago</th><th>Fechou</th><th></th></tr></thead>
+              <thead><tr><th>{t("Mesa")}</th><th>{t("Fechada")}</th><th>{t("Pessoas")}</th><th>{t("Pedidos")}</th><th>{t("Cancelados")}</th><th>{t("Total")}</th><th>{t("Pago")}</th><th>{t("Fechou")}</th><th></th></tr></thead>
               <tbody>
-                {tabs.map((t) => (
-                  <tr key={t.id} className={t.merged_into ? "opacity-60" : ""}>
-                    <td>{t.table}{t.tables.length ? ` + ${t.tables.join(", ")}` : ""}{t.merged_into && <small> unida</small>}</td>
-                    <td>{when(t.closed_at)}</td>
-                    <td>{t.guests}</td>
-                    <td>{t.orders}</td>
-                    <td>{t.cancelled_items || "—"}</td>
-                    <td>{money(t.totals?.due_cents ?? 0)}</td>
-                    <td>{money(t.totals?.paid_cents ?? 0)}</td>
-                    <td>{t.closed_by ? data.names[t.closed_by] ?? "Equipe" : "—"}</td>
-                    <td><button className="text-sm underline" aria-label={`Ver comanda da mesa ${t.table}`} onClick={() => void open(t.id)}>Ver</button></td>
+                {tabs.map((row) => (
+                  <tr key={row.id} className={row.merged_into ? "opacity-60" : ""}>
+                    <td>{row.table}{row.tables.length ? ` + ${row.tables.join(", ")}` : ""}{row.merged_into && <small> {t("unida")}</small>}</td>
+                    <td>{when(row.closed_at, locale)}</td>
+                    <td>{row.guests}</td>
+                    <td>{row.orders}</td>
+                    <td>{row.cancelled_items || "—"}</td>
+                    <td>{money(row.totals?.due_cents ?? 0)}</td>
+                    <td>{money(row.totals?.paid_cents ?? 0)}</td>
+                    <td>{row.closed_by ? data.names[row.closed_by] ?? t("Equipe") : "—"}</td>
+                    <td><button className="text-sm underline" aria-label={t("Ver comanda da mesa {label}", { label: row.table })} onClick={() => void open(row.id)}>{t("Ver")}</button></td>
                   </tr>
                 ))}
-                {!tabs.length && <tr><td colSpan={9}>Nenhuma comanda fechada no período.</td></tr>}
+                {!tabs.length && <tr><td colSpan={9}>{t("Nenhuma comanda fechada no período.")}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -244,25 +299,25 @@ export function HistoryView({ restaurantId, canViewReports }: { restaurantId: st
       {tab === "operacoes" && audit && (
         <section className={panelClass}>
           <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="font-heading text-2xl">Operações</h3>
-            <select aria-label="Tipo de operação" value={filterAction} onChange={(e) => setFilterAction(e.target.value)} className="rounded-xl border px-3 py-2 text-sm">
-              <option value="">Todos os tipos</option>
-              {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <h3 className="font-heading text-2xl">{t("Operações")}</h3>
+            <select aria-label={t("Tipo de operação")} value={filterAction} onChange={(e) => setFilterAction(e.target.value)} className="rounded-xl border px-3 py-2 text-sm">
+              <option value="">{t("Todos os tipos")}</option>
+              {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
             </select>
           </header>
           <div className="queue-table-wrap">
             <table className="queue-table">
-              <thead><tr><th>Quando</th><th>Operação</th><th>Quem</th><th>Detalhe</th></tr></thead>
+              <thead><tr><th>{t("Quando")}</th><th>{t("Operação")}</th><th>{t("Quem")}</th><th>{t("Detalhe")}</th></tr></thead>
               <tbody>
                 {audit.entries.map((l) => (
                   <tr key={l.id}>
-                    <td>{when(l.created_at)}</td>
-                    <td>{ACTION_LABELS[l.action] ?? l.action}</td>
-                    <td>{l.actor_id ? audit.names[l.actor_id] ?? "Equipe" : ROLE_LABELS[l.actor_role] ?? l.actor_role}</td>
-                    <td className="text-muted-foreground">{describe(l.action, l.data)}{l.tab_id && <button className="ml-2 underline" onClick={() => void open(l.tab_id!)}>comanda</button>}</td>
+                    <td>{when(l.created_at, locale)}</td>
+                    <td>{ACTION_LABELS[l.action] ? t(ACTION_LABELS[l.action]) : l.action}</td>
+                    <td>{l.actor_id ? audit.names[l.actor_id] ?? t("Equipe") : ROLE_LABELS[l.actor_role] ? t(ROLE_LABELS[l.actor_role]) : l.actor_role}</td>
+                    <td className="text-muted-foreground">{describe(l.action, l.data, t)}{l.tab_id && <button className="ml-2 underline" onClick={() => void open(l.tab_id!)}>{t("ver comanda")}</button>}</td>
                   </tr>
                 ))}
-                {!audit.entries.length && <tr><td colSpan={4}>Nenhuma operação no período.</td></tr>}
+                {!audit.entries.length && <tr><td colSpan={4}>{t("Nenhuma operação no período.")}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -272,18 +327,20 @@ export function HistoryView({ restaurantId, canViewReports }: { restaurantId: st
   );
 }
 
-function describe(action: string, data: Record<string, unknown>) {
+function describe(action: string, data: Record<string, unknown>, t: Translate) {
   const parts: string[] = [];
+  if (typeof data.number === "number" && action.startsWith("espera_")) parts.push(t("senha {n}", { n: data.number }));
   if (typeof data.name === "string") parts.push(data.name);
-  if (typeof data.label === "string") parts.push(`mesa ${data.label}`);
+  if (typeof data.label === "string") parts.push(t("mesa {label}", { label: data.label }));
+  if (typeof data.party_size === "number") parts.push(data.party_size === 1 ? t("1 pessoa") : t("{n} pessoas", { n: data.party_size }));
   if (typeof data.amount_cents === "number") parts.push(money(data.amount_cents));
   if (typeof data.total_cents === "number" && action.startsWith("pedido_")) parts.push(money(data.total_cents));
-  if (typeof data.method === "string") parts.push(PAYMENT_LABELS[data.method as PaymentMethod] ?? data.method);
-  if (typeof data.reason === "string" && data.reason) parts.push(data.reason);
-  if (typeof data.quantity === "number") parts.push(`${data.quantity} un.`);
+  if (typeof data.method === "string") parts.push(PAYMENT_LABELS[data.method as PaymentMethod] ? t(PAYMENT_LABELS[data.method as PaymentMethod]) : data.method);
+  if (typeof data.reason === "string" && data.reason) parts.push(t(data.reason));
+  if (typeof data.quantity === "number") parts.push(t("{n} un.", { n: data.quantity }));
   if (typeof data.from === "number" && typeof data.to === "number") parts.push(`${money(data.from)} → ${money(data.to)}`);
-  if (typeof data.rating === "number") parts.push(`${data.rating} estrelas`);
-  if (typeof data.kind === "string") parts.push(data.kind === "conta" ? "pediu a conta" : data.kind === "garcom" ? "chamou o garçom" : "outro");
+  if (typeof data.rating === "number") parts.push(t("{n} estrelas", { n: data.rating }));
+  if (typeof data.kind === "string") parts.push(data.kind === "conta" ? t("pediu a conta") : data.kind === "garcom" ? t("chamou o garçom") : t("outro"));
   if (typeof data.percent === "number") parts.push(`${data.percent}%`);
   return parts.join(" • ");
 }
@@ -306,32 +363,34 @@ function useReport(restaurantId: string, period: PeriodState) {
   const [data, setData] = useState<{ report: Report; survey: Survey; names: Record<string, string>; range: { from: string; to: string } } | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       setError("");
       try {
         setData(await jsonRequest(`/api/reports/${restaurantId}?${periodQuery(period)}`));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Não foi possível carregar");
+        setError(e instanceof Error ? e.message : msg("Não foi possível carregar"));
       }
     }, 0);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [restaurantId, period]);
   return { data, error };
 }
 
-function ReportTable<T>({ title, rows, columns, csv, empty = "Sem dados no período." }: { title: string; rows: T[]; columns: { label: string; value: (row: T) => string | number }[]; csv: string; empty?: string }) {
+/** Rótulos das colunas passam por t() aqui; os valores chegam prontos. */
+function ReportTable<R>({ title, rows, columns, csv, empty = msg("Sem dados no período.") }: { title: string; rows: R[]; columns: { label: string; value: (row: R) => string | number }[]; csv: string; empty?: string }) {
+  const { t } = useI18n();
   return (
     <section className={`${panelClass} report-table`}>
       <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-heading text-xl">{title}</h3>
-        <a href={csv} className="flex items-center gap-1 text-sm underline" aria-label={`Exportar CSV de ${title}`}><Download size={14} /> Exportar CSV</a>
+        <a href={csv} className="flex items-center gap-1 text-sm underline" aria-label={t("Exportar CSV de {title}", { title })}><Download size={14} /> {t("Exportar CSV")}</a>
       </header>
       <div className="queue-table-wrap">
         <table className="queue-table">
-          <thead><tr>{columns.map((c) => <th key={c.label}>{c.label}</th>)}</tr></thead>
+          <thead><tr>{columns.map((c) => <th key={c.label}>{t(c.label)}</th>)}</tr></thead>
           <tbody>
             {rows.map((r, i) => <tr key={i}>{columns.map((c) => <td key={c.label}>{c.value(r)}</td>)}</tr>)}
-            {!rows.length && <tr><td colSpan={columns.length}>{empty}</td></tr>}
+            {!rows.length && <tr><td colSpan={columns.length}>{t(empty)}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -340,41 +399,42 @@ function ReportTable<T>({ title, rows, columns, csv, empty = "Sem dados no perí
 }
 
 export function ReportsView({ restaurantId }: { restaurantId: string }) {
+  const { t } = useI18n();
   const [period, setPeriod] = useState<PeriodState>({ period: "7d" });
   const { data, error } = useReport(restaurantId, period);
   const csv = (table: string) => `/api/reports/${restaurantId}?${periodQuery(period)}&format=csv&table=${table}`;
   const r = data?.report;
   const stats = r
     ? [
-        { label: "Pedidos", value: String(r.orders), detail: `${money(r.items_cents)} em itens` },
-        { label: "Comandas fechadas", value: String(r.tabs_closed), detail: `${r.guests} pessoas` },
-        { label: "Ticket por comanda", value: money(r.tabs_closed ? Math.round(r.items_cents / r.tabs_closed) : 0), detail: "Itens ÷ comandas" },
-        { label: "Ticket por pessoa", value: money(r.guests ? Math.round(r.items_cents / r.guests) : 0), detail: "Itens ÷ pessoas" },
-        { label: "Taxa e descontos", value: `${money(r.fee_cents)} / ${money(r.discount_cents)}`, detail: "Comandas fechadas" },
-        { label: "Mesa ocupada", value: r.table_minutes_avg != null ? `${r.table_minutes_avg} min` : "—", detail: "Tempo médio por comanda" },
+        { label: t("Pedidos"), value: String(r.orders), detail: t("{value} em itens", { value: money(r.items_cents) }) },
+        { label: t("Comandas fechadas"), value: String(r.tabs_closed), detail: t("{n} pessoas", { n: r.guests }) },
+        { label: t("Ticket por comanda"), value: money(r.tabs_closed ? Math.round(r.items_cents / r.tabs_closed) : 0), detail: t("Itens ÷ comandas") },
+        { label: t("Ticket por pessoa"), value: money(r.guests ? Math.round(r.items_cents / r.guests) : 0), detail: t("Itens ÷ pessoas") },
+        { label: t("Taxa e descontos"), value: `${money(r.fee_cents)} / ${money(r.discount_cents)}`, detail: t("Comandas fechadas") },
+        { label: t("Mesa ocupada"), value: r.table_minutes_avg != null ? t("{n} min", { n: r.table_minutes_avg }) : "—", detail: t("Tempo médio por comanda") },
       ]
     : [];
   return (
     <div className="space-y-5">
       <PeriodPicker value={period} onChange={setPeriod} />
-      {error && <p role="alert" className="rounded-xl bg-destructive p-4 text-white">{error}</p>}
+      {error && <p role="alert" className="rounded-xl bg-destructive p-4 text-white">{t(error)}</p>}
       {data && r && (
         <>
-          <p className="text-sm text-muted-foreground">Período: {DAY_LABEL(data.range.from)} até {DAY_LABEL(data.range.to)} (exclusivo)</p>
+          <p className="text-sm text-muted-foreground">{t("Período: {from} até {to} (exclusivo)", { from: DAY_LABEL(data.range.from), to: DAY_LABEL(data.range.to) })}</p>
           <div className="dashboard-stats report-stats">{stats.map((s) => <article className="stat-card" key={s.label}><div><p>{s.label}</p><strong>{s.value}</strong><span className="stat-detail">{s.detail}</span></div></article>)}</div>
           <div className="report-grid">
-            <ReportTable title="Vendas por dia" rows={r.by_day} csv={csv("by_day")} columns={[{ label: "Dia", value: (x) => DAY_LABEL(x.day) }, { label: "Pedidos", value: (x) => x.orders }, { label: "Valor", value: (x) => money(x.cents) }]} />
-            <ReportTable title="Vendas por hora" rows={r.by_hour} csv={csv("by_hour")} columns={[{ label: "Hora", value: (x) => `${x.hour}h` }, { label: "Pedidos", value: (x) => x.orders }, { label: "Valor", value: (x) => money(x.cents) }]} />
-            <ReportTable title="Por categoria" rows={r.by_category} csv={csv("by_category")} columns={[{ label: "Categoria", value: (x) => x.name }, { label: "Qtd.", value: (x) => x.quantity }, { label: "Valor", value: (x) => money(x.cents) }]} />
-            <ReportTable title="Por item" rows={r.by_item} csv={csv("by_item")} columns={[{ label: "Item", value: (x) => x.name }, { label: "Qtd.", value: (x) => x.quantity }, { label: "Valor", value: (x) => money(x.cents) }]} />
-            <ReportTable title="Por mesa" rows={r.by_table} csv={csv("by_table")} columns={[{ label: "Mesa", value: (x) => x.label }, { label: "Comandas", value: (x) => x.tabs }, { label: "Valor", value: (x) => money(x.cents) }]} />
-            <ReportTable title="Por garçom" rows={r.by_staff} csv={csv("by_staff")} columns={[{ label: "Pessoa", value: (x) => data.names[x.user_id] ?? "Equipe" }, { label: "Abriu", value: (x) => x.opened }, { label: "Fechou", value: (x) => x.closed }]} />
-            <ReportTable title="Formas de pagamento" rows={r.by_method} csv={csv("by_method")} columns={[{ label: "Forma", value: (x) => PAYMENT_LABELS[x.method] ?? x.method }, { label: "Valor", value: (x) => money(x.cents) }]} />
-            <ReportTable title="Cancelamentos" rows={r.cancellations} csv={csv("cancellations")} columns={[{ label: "Motivo", value: (x) => x.reason }, { label: "Qtd.", value: (x) => x.quantity }, { label: "Valor", value: (x) => money(x.cents) }]} empty={`Nenhum cancelamento.${Object.keys(r.cancellations_by_role).length ? "" : ""}`} />
-            <ReportTable title="Tempo de preparo por setor" rows={r.prep_by_station} csv={csv("prep_by_station")} columns={[{ label: "Setor", value: (x) => STATION_LABELS[x.station] ?? x.station }, { label: "Média (min)", value: (x) => x.avg_minutes }, { label: "Pedidos", value: (x) => x.orders }]} />
+            <ReportTable title={t("Vendas por dia")} rows={r.by_day} csv={csv("by_day")} columns={[{ label: msg("Dia"), value: (x) => DAY_LABEL(x.day) }, { label: msg("Pedidos"), value: (x) => x.orders }, { label: msg("Valor"), value: (x) => money(x.cents) }]} />
+            <ReportTable title={t("Vendas por hora")} rows={r.by_hour} csv={csv("by_hour")} columns={[{ label: msg("Hora"), value: (x) => `${x.hour}h` }, { label: msg("Pedidos"), value: (x) => x.orders }, { label: msg("Valor"), value: (x) => money(x.cents) }]} />
+            <ReportTable title={t("Por categoria")} rows={r.by_category} csv={csv("by_category")} columns={[{ label: msg("Categoria"), value: (x) => x.name }, { label: msg("Qtd."), value: (x) => x.quantity }, { label: msg("Valor"), value: (x) => money(x.cents) }]} />
+            <ReportTable title={t("Por item")} rows={r.by_item} csv={csv("by_item")} columns={[{ label: msg("Item"), value: (x) => x.name }, { label: msg("Qtd."), value: (x) => x.quantity }, { label: msg("Valor"), value: (x) => money(x.cents) }]} />
+            <ReportTable title={t("Por mesa")} rows={r.by_table} csv={csv("by_table")} columns={[{ label: msg("Mesa"), value: (x) => x.label }, { label: msg("Comandas"), value: (x) => x.tabs }, { label: msg("Valor"), value: (x) => money(x.cents) }]} />
+            <ReportTable title={t("Por garçom")} rows={r.by_staff} csv={csv("by_staff")} columns={[{ label: msg("Pessoa"), value: (x) => data.names[x.user_id] ?? t("Equipe") }, { label: msg("Abriu"), value: (x) => x.opened }, { label: msg("Fechou"), value: (x) => x.closed }]} />
+            <ReportTable title={t("Formas de pagamento")} rows={r.by_method} csv={csv("by_method")} columns={[{ label: msg("Forma"), value: (x) => (PAYMENT_LABELS[x.method] ? t(PAYMENT_LABELS[x.method]) : x.method) }, { label: msg("Valor"), value: (x) => money(x.cents) }]} />
+            <ReportTable title={t("Cancelamentos")} rows={r.cancellations} csv={csv("cancellations")} columns={[{ label: msg("Motivo"), value: (x) => t(x.reason) }, { label: msg("Qtd."), value: (x) => x.quantity }, { label: msg("Valor"), value: (x) => money(x.cents) }]} empty={msg("Nenhum cancelamento.")} />
+            <ReportTable title={t("Tempo de preparo por setor")} rows={r.prep_by_station} csv={csv("prep_by_station")} columns={[{ label: msg("Setor"), value: (x) => (STATION_LABELS[x.station] ? t(STATION_LABELS[x.station]) : x.station) }, { label: msg("Média (min)"), value: (x) => x.avg_minutes }, { label: msg("Pedidos"), value: (x) => x.orders }]} />
           </div>
           {Object.keys(r.cancellations_by_role).length > 0 && (
-            <p className="text-sm text-muted-foreground">Quem cancelou: {Object.entries(r.cancellations_by_role).map(([role, n]) => `${ROLE_LABELS[role] ?? role} ${n}`).join(" • ")}</p>
+            <p className="text-sm text-muted-foreground">{t("Quem cancelou:")} {Object.entries(r.cancellations_by_role).map(([role, n]) => `${ROLE_LABELS[role] ? t(ROLE_LABELS[role]) : role} ${n}`).join(" • ")}</p>
           )}
         </>
       )}
@@ -383,6 +443,7 @@ export function ReportsView({ restaurantId }: { restaurantId: string }) {
 }
 
 export function SurveyView({ restaurantId }: { restaurantId: string }) {
+  const { locale, t } = useI18n();
   const [period, setPeriod] = useState<PeriodState>({ period: "30d" });
   const { data, error } = useReport(restaurantId, period);
   const [detail, setDetail] = useState<TabDetailData | null>(null);
@@ -392,20 +453,20 @@ export function SurveyView({ restaurantId }: { restaurantId: string }) {
   return (
     <div className="space-y-5">
       <PeriodPicker value={period} onChange={setPeriod} />
-      {error && <p role="alert" className="rounded-xl bg-destructive p-4 text-white">{error}</p>}
+      {error && <p role="alert" className="rounded-xl bg-destructive p-4 text-white">{t(error)}</p>}
       {detail && <TabDetail data={detail} onClose={() => setDetail(null)} />}
       {s && (
         <>
           <div className="dashboard-stats report-stats">
-            <article className="stat-card"><span className="stat-icon"><Star size={25} /></span><div><p>Nota geral</p><strong>{stars(s.avg_rating)}</strong><span className="stat-detail">{s.responses} {s.responses === 1 ? "resposta" : "respostas"}</span></div></article>
-            <article className="stat-card"><div><p>Comida</p><strong>{stars(s.avg_food)}</strong><span className="stat-detail">Nota opcional</span></div></article>
-            <article className="stat-card"><div><p>Atendimento</p><strong>{stars(s.avg_service)}</strong><span className="stat-detail">Nota opcional</span></div></article>
-            <article className="stat-card"><div><p>Tempo de espera</p><strong>{stars(s.avg_wait)}</strong><span className="stat-detail">Nota opcional</span></div></article>
-            <article className="stat-card"><div><p>Taxa de resposta</p><strong>{s.guests ? `${Math.round((s.responses / s.guests) * 100)}%` : "—"}</strong><span className="stat-detail">{s.responses} de {s.guests} pessoas</span></div></article>
+            <article className="stat-card"><span className="stat-icon"><Star size={25} /></span><div><p>{t("Nota geral")}</p><strong>{stars(s.avg_rating)}</strong><span className="stat-detail">{s.responses === 1 ? t("1 resposta") : t("{n} respostas", { n: s.responses })}</span></div></article>
+            <article className="stat-card"><div><p>{t("Comida")}</p><strong>{stars(s.avg_food)}</strong><span className="stat-detail">{t("Nota opcional")}</span></div></article>
+            <article className="stat-card"><div><p>{t("Atendimento")}</p><strong>{stars(s.avg_service)}</strong><span className="stat-detail">{t("Nota opcional")}</span></div></article>
+            <article className="stat-card"><div><p>{t("Tempo de espera")}</p><strong>{stars(s.avg_wait)}</strong><span className="stat-detail">{t("Nota opcional")}</span></div></article>
+            <article className="stat-card"><div><p>{t("Taxa de resposta")}</p><strong>{s.guests ? `${Math.round((s.responses / s.guests) * 100)}%` : "—"}</strong><span className="stat-detail">{t("{n} de {total} pessoas", { n: s.responses, total: s.guests })}</span></div></article>
           </div>
           <div className="report-grid">
             <section className={panelClass}>
-              <h3 className="mb-3 font-heading text-xl">Distribuição</h3>
+              <h3 className="mb-3 font-heading text-xl">{t("Distribuição")}</h3>
               {[5, 4, 3, 2, 1].map((n) => {
                 const count = s.distribution?.[String(n)] ?? 0;
                 const pct = s.responses ? Math.round((count / s.responses) * 100) : 0;
@@ -413,27 +474,32 @@ export function SurveyView({ restaurantId }: { restaurantId: string }) {
               })}
             </section>
             <section className={panelClass}>
-              <h3 className="mb-3 font-heading text-xl">Etiquetas mais marcadas</h3>
-              <div className="flex flex-wrap gap-2">{s.tags.map((t) => <span key={t.tag} className="merge-chip">{t.tag} <small>{t.n}</small></span>)}{!s.tags.length && <p className="text-muted-foreground">Nenhuma etiqueta ainda.</p>}</div>
+              <h3 className="mb-3 font-heading text-xl">{t("Etiquetas mais marcadas")}</h3>
+              <div className="flex flex-wrap gap-2">{s.tags.map((tag) => <span key={tag.tag} className="merge-chip">{t(tag.tag)} <small>{tag.n}</small></span>)}{!s.tags.length && <p className="text-muted-foreground">{t("Nenhuma etiqueta ainda.")}</p>}</div>
             </section>
           </div>
           <ReportTable
-            title="Comentários"
+            title={t("Comentários")}
             rows={s.comments}
             csv={`/api/reports/${restaurantId}?${periodQuery(period)}&format=csv&table=comments`}
             columns={[
-              { label: "Quando", value: (c) => when(c.created_at) },
-              { label: "Mesa", value: (c) => c.table },
-              { label: "Pessoa", value: (c) => c.guest },
-              { label: "Nota", value: (c) => "★".repeat(c.rating) },
-              { label: "Etiquetas", value: (c) => c.tags.join(", ") },
-              { label: "Comentário", value: (c) => c.comment ?? "" },
+              { label: msg("Quando"), value: (c) => when(c.created_at, locale) },
+              { label: msg("Mesa"), value: (c) => c.table },
+              { label: msg("Pessoa"), value: (c) => c.guest },
+              { label: msg("Nota"), value: (c) => "★".repeat(c.rating) },
+              { label: msg("Etiquetas"), value: (c) => c.tags.map((tag) => t(tag)).join(", ") },
+              { label: msg("Comentário"), value: (c) => c.comment ?? "" },
             ]}
-            empty="Nenhuma avaliação no período."
+            empty={msg("Nenhuma avaliação no período.")}
           />
           {s.comments.length > 0 && (
             <p className="text-sm text-muted-foreground">
-              Abrir comanda: {s.comments.slice(0, 20).map((c) => <button key={c.id} className="mr-2 underline" onClick={() => void open(c.tab_id)}>mesa {c.table} ({when(c.created_at)})</button>)}
+              {t("Abrir comanda:")}{" "}
+              {s.comments.slice(0, 20).map((c) => (
+                <button key={c.id} className="mr-2 underline" onClick={() => void open(c.tab_id)}>
+                  {t("mesa {label}", { label: c.table })} ({when(c.created_at, locale)})
+                </button>
+              ))}
             </p>
           )}
         </>

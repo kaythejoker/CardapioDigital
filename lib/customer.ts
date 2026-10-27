@@ -38,7 +38,7 @@ export async function customerTable(slug: string, qr: string) {
   const { data: restaurant, error } = await db
     .from("restaurants")
     .select(
-      "id,name,slug,logo_url,cover_url,primary_color,background_color,custom_domain,custom_domain_status,resellers(brand_name,logo_url,primary_color,domain,domain_status)",
+      "id,name,slug,logo_url,cover_url,primary_color,background_color,custom_domain,custom_domain_status,orders_paused,orders_paused_reason,pin_required,resellers(brand_name,logo_url,primary_color,domain,domain_status)",
     )
     .eq("slug", slug)
     .eq("status", "active")

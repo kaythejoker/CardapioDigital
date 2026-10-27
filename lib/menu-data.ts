@@ -3,7 +3,45 @@ import { cookies } from "next/headers";
 import { customerSession, customerTable, deviceId, hashToken, sessionCookie } from "@/lib/customer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { tableUrl } from "@/lib/menu-origin";
-import { type MenuData } from "@/lib/menu-types";
+import { type MenuCategory, type MenuData, type MenuItem } from "@/lib/menu-types";
+import { type Features } from "@/lib/features";
+
+const CATEGORY_FIELDS = "id,name,position,translations,blocked,blocked_reason,available_from,available_until";
+const ITEM_FIELDS =
+  "id,category_id,name,description,price_cents,photo_url,prep_minutes,featured,position,translations,blocked,blocked_reason,available_from,available_until,modifier_groups(id,name,required,min_select,max_select,position,translations,modifiers(id,name,price_cents,position,translations))";
+
+type Row = MenuItem & { position?: number; stock_enabled?: boolean; stock_quantity?: number | null };
+
+/**
+ * Módulos do plano (spec-fase3.md): sem idiomas, nada de tradução; sem
+ * bloqueios, item e categoria valem como liberados. Itens bloqueados ou fora do
+ * horário continuam na lista, apagados no cardápio; o envio é recusado no banco.
+ */
+function shape(features: Partial<Features> | undefined, categories: MenuCategory[], items: Row[]) {
+  const languages = features?.languages !== false;
+  const blocks = features?.order_blocks !== false;
+  const clean = <T extends { translations?: unknown; blocked?: boolean; blocked_reason?: string | null; available_from?: string | null; available_until?: string | null }>(row: T): T => ({
+    ...row,
+    translations: languages ? (row.translations ?? {}) : {},
+    ...(blocks ? {} : { blocked: false, blocked_reason: null, available_from: null, available_until: null }),
+  });
+  const allowed = new Set(categories.map((c) => c.id));
+  return {
+    languages,
+    categories: categories.map(clean),
+    items: items
+      .filter((i) => allowed.has(i.category_id))
+      .map(({ stock_enabled, stock_quantity, ...item }) => ({
+        ...clean(item),
+        modifier_groups: item.modifier_groups.map((g) => ({
+          ...g,
+          translations: languages ? (g.translations ?? {}) : {},
+          modifiers: g.modifiers.map((m) => ({ ...m, translations: languages ? (m.translations ?? {}) : {} })),
+        })),
+        ...(stock_enabled === undefined ? {} : { stock_left: stock_enabled ? stock_quantity : null }),
+      })),
+  };
+}
 
 /** Cardápio sem mesa (domínio próprio do restaurante): só consulta, sem pedir. */
 export async function loadMenuConsult(slug: string): Promise<MenuData | null> {
@@ -34,18 +72,17 @@ export async function loadMenuConsult(slug: string): Promise<MenuData | null> {
   const { data: access } = await db.rpc("restaurant_access", { p_restaurant: restaurant.id });
   if (access?.blocked) return { ...base, categories: [], items: [], suspended: true };
   const [categories, items] = await Promise.all([
-    db.from("categories").select("id,name,position").eq("restaurant_id", restaurant.id).eq("active", true).order("position"),
+    db.from("categories").select(CATEGORY_FIELDS).eq("restaurant_id", restaurant.id).eq("active", true).order("position"),
     db
       .from("menu_items")
-      .select("id,category_id,name,description,price_cents,photo_url,prep_minutes,featured,position,modifier_groups(id,name,required,min_select,max_select,position,modifiers(id,name,price_cents,position))")
+      .select(ITEM_FIELDS)
       .eq("restaurant_id", restaurant.id)
       .eq("active", true)
       .eq("sold_out", false)
       .order("position"),
   ]);
   if (categories.error || items.error) throw new Error("Não foi possível carregar o cardápio");
-  const allowed = new Set(categories.data?.map((c) => c.id));
-  return { ...base, categories: categories.data ?? [], items: (items.data ?? []).filter((i) => allowed.has(i.category_id)) };
+  return { ...base, ...shape(access?.features, categories.data ?? [], (items.data ?? []) as Row[]) };
 }
 
 export async function loadMenu(
@@ -79,15 +116,13 @@ export async function loadMenu(
   const [categories, items, tab, session, calls, device, invite] = await Promise.all([
     ctx.db
       .from("categories")
-      .select("id,name,position")
+      .select(CATEGORY_FIELDS)
       .eq("restaurant_id", ctx.restaurant.id)
       .eq("active", true)
       .order("position"),
     ctx.db
       .from("menu_items")
-      .select(
-        "id,category_id,name,description,price_cents,photo_url,prep_minutes,featured,position,stock_enabled,stock_quantity,modifier_groups(id,name,required,min_select,max_select,position,modifiers(id,name,price_cents,position))",
-      )
+      .select(`${ITEM_FIELDS},stock_enabled,stock_quantity`)
       .eq("restaurant_id", ctx.restaurant.id)
       .eq("active", true)
       .eq("sold_out", false)
@@ -108,7 +143,11 @@ export async function loadMenu(
   ]);
   if (categories.error || items.error || tab.error || calls.error)
     throw new Error("Não foi possível carregar o cardápio");
-  const allowed = new Set(categories.data?.map((c) => c.id));
+  const blocks = access?.features?.order_blocks !== false;
+  const tabBlocked =
+    blocks && tab.data
+      ? !!(await ctx.db.from("tabs").select("orders_blocked").eq("id", tab.data).maybeSingle()).data?.orders_blocked
+      : false;
   // Explicit serialization keeps PINs and server-only session details off the client.
   return {
     restaurant: {
@@ -121,13 +160,10 @@ export async function loadMenu(
         .resellers as unknown as MenuData["restaurant"]["resellers"],
     },
     table: { label: ctx.table.label },
-    categories: categories.data ?? [],
-    items: (items.data ?? [])
-      .filter((i) => allowed.has(i.category_id))
-      .map(({ stock_enabled, stock_quantity, ...item }) => ({
-        ...item,
-        stock_left: stock_enabled ? stock_quantity : null,
-      })),
+    ...shape(access?.features, categories.data ?? [], (items.data ?? []) as Row[]),
+    paused: blocks && ctx.restaurant.orders_paused ? { reason: ctx.restaurant.orders_paused_reason } : null,
+    tab_blocked: tabBlocked,
+    pin_required: ctx.restaurant.pin_required !== false,
     open: !!tab.data,
     authorized: !!session,
     menu_url: tableUrl(ctx.restaurant, qrToken),

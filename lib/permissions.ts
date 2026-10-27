@@ -16,6 +16,7 @@ export const PERMISSIONS = [
   { key: "close_tab", label: "Fechar comanda", group: "Salão" },
   { key: "merge_tables", label: "Unir mesas", group: "Salão" },
   { key: "apply_discount", label: "Aplicar desconto", group: "Salão" },
+  { key: "block_orders", label: "Pausar pedidos e bloquear mesas", group: "Salão" },
   { key: "edit_menu", label: "Editar cardápio", group: "Gestão" },
   { key: "manage_stock", label: "Controlar estoque", group: "Gestão" },
   { key: "view_reports", label: "Ver relatórios e histórico", group: "Gestão" },
@@ -35,6 +36,9 @@ const WAITER_DEFAULTS: readonly PermissionKey[] = [
 /** Permissão padrão do papel, sem ajuste por pessoa. */
 export function defaultPermission(roles: readonly string[], key: PermissionKey) {
   if (roles.includes("manager")) return true;
+  // Cozinha lotada: quem está na operação pode pausar.
+  if (key === "block_orders")
+    return ["waiter", "kitchen", "bar"].some((r) => roles.includes(r));
   if (roles.includes("waiter")) return WAITER_DEFAULTS.includes(key);
   return false;
 }

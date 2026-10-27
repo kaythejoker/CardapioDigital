@@ -18,7 +18,8 @@ const paramsSchema = z.object({
 const command = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("pin"),
-    pin: z.string().regex(/^\d{4}$/),
+    // Vazio quando o restaurante dispensou o PIN; o banco decide.
+    pin: z.string().regex(/^(\d{4})?$/),
     name: z.string().trim().min(1).max(40),
   }),
   z.object({
@@ -214,7 +215,7 @@ export async function GET(
         session.db
           .from("orders")
           .select(
-            "id,guest_id,status,prep_minutes,total_cents,created_at,station,batch_id,order_items(id,name_snapshot,unit_price_cents,quantity,note,modifiers_snapshot,shared,cancelled_at)",
+            "id,guest_id,status,prep_minutes,total_cents,created_at,station,batch_id,order_items(id,menu_item_id,name_snapshot,unit_price_cents,quantity,note,modifiers_snapshot,shared,cancelled_at)",
           )
           .eq("tab_id", session.tab.id)
           .order("created_at", { ascending: false })

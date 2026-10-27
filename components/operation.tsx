@@ -11,9 +11,13 @@ import {
   MessageSquare,
   ChefHat,
   Clock,
+  Ban,
   Link2,
+  ListOrdered,
   LogOut,
+  PauseCircle,
   Pin,
+  PlayCircle,
   RefreshCw,
   UtensilsCrossed,
   Volume2,
@@ -43,6 +47,9 @@ import { jsonRequest } from "@/components/admin-ui";
 import { TabDetail, when, type TabDetailData } from "@/components/reports";
 import { AccessBanner, HelpButton } from "@/components/support";
 import { type Access } from "@/lib/features";
+import { formatTime, msg, type Translate } from "@/lib/i18n";
+import { LanguageSwitcher, useI18n } from "@/components/i18n";
+import { WaitlistPanel, type WaitlistEntry } from "@/components/waitlist-panel";
 
 export type StaffOrder = CustomerOrder & {
   tab_id: string;
@@ -65,6 +72,8 @@ export type OperationData = {
     primary_color?: string | null;
     service_fee_percent?: number | string;
     service_fee_optional?: boolean;
+    orders_paused?: boolean;
+    orders_paused_reason?: string | null;
     resellers: {
       brand_name: string;
       primary_color: string;
@@ -86,6 +95,8 @@ export type OperationData = {
     service_fee_waived?: boolean;
     discount_cents?: number;
     discount_reason?: string | null;
+    orders_blocked?: boolean;
+    orders_blocked_reason?: string | null;
   }[];
   payments: { id: string; tab_id: string; guest_id: string | null; method: PaymentMethod; amount_cents: number; created_at: string }[];
   guests: (SplitGuest & { tab_id: string })[];
@@ -105,6 +116,8 @@ export type OperationData = {
   categories: { id: string; name: string; position: number; active: boolean; station?: Station }[];
   settings: QueueSettings;
   calls: StaffCall[];
+  /** Lista de espera de hoje (só no salão, com o módulo ligado). */
+  waitlist?: WaitlistEntry[];
 };
 export type StaffCall = {
   id: string;
@@ -116,10 +129,40 @@ export type StaffCall = {
   created_at: string;
 };
 const CALL_BADGES: Record<ServiceCallKind, string> = {
-  garcom: "Chamando",
-  conta: "Pede a conta",
-  ajuda: "Precisa de ajuda",
+  garcom: msg("Chamando"),
+  conta: msg("Pede a conta"),
+  ajuda: msg("Precisa de ajuda"),
 };
+const MODE_LABELS = { fifo: msg("Ordem de chegada"), complexity: msg("Complexidade"), balanced: msg("Equilibrado") } as const;
+const ORDER_STATUS: Record<StaffOrder["status"], string> = {
+  recebido: msg("Recebido"),
+  em_preparo: msg("Em preparo"),
+  pronto: msg("Pronto"),
+  entregue: msg("Entregue"),
+  cancelado: msg("Cancelado"),
+};
+
+/** Motivo opcional para pausar pedidos ou bloquear uma mesa. */
+function BlockForm({ label, placeholder, busy, onConfirm, onCancel, t }: { label: string; placeholder: string; busy: boolean; onConfirm: (reason: string) => void; onCancel: () => void; t: Translate }) {
+  return (
+    <form
+      className="block-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onConfirm(String(new FormData(e.currentTarget).get("reason") || "").trim());
+      }}
+    >
+      <label>
+        {t("Motivo (opcional, o cliente vê)")}
+        <input name="reason" maxLength={120} placeholder={placeholder} autoFocus />
+      </label>
+      <div className="flex gap-3">
+        <button disabled={busy} className="block-form-confirm">{label}</button>
+        <button type="button" onClick={onCancel}>{t("Voltar")}</button>
+      </div>
+    </form>
+  );
+}
 
 export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   const router = useRouter();
@@ -142,7 +185,13 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   const [closedToday, setClosedToday] = useState<{ tabs: { id: string; table: string; tables: string[]; closed_at: string; guests: number; orders: number; totals: TabTotals | null }[] } | null>(null);
   const [closedDetail, setClosedDetail] = useState<TabDetailData | null>(null);
   const [discountForm, setDiscountForm] = useState(false);
-  const [connection, setConnection] = useState("Conectando…");
+  const [pausing, setPausing] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [panel, setPanel] = useState<"tables" | "waitlist">("tables");
+  const [connection, setConnection] = useState<string>(msg("Conectando…"));
+  const { locale, t } = useI18n();
+  // Alias para os trechos em que "t" é a mesa do laço.
+  const tr = t;
   const alerts = useAlerts();
   // Pedidos recém-chegados ficam destacados por 10 s na cozinha.
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -166,7 +215,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
       setData(json);
       setNow(Date.now());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao atualizar");
+      setError(e instanceof Error ? e.message : msg("Falha ao atualizar"));
     }
   }, [role, restaurant]);
   useEffect(() => {
@@ -254,8 +303,20 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
             void refresh();
           },
         )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "waitlist_entries",
+            filter: `restaurant_id=eq.${id}`,
+          },
+          () => {
+            void refresh();
+          },
+        )
         .subscribe((status) =>
-          setConnection(status === "SUBSCRIBED" ? "Ao vivo" : "Reconectando…"),
+          setConnection(status === "SUBSCRIBED" ? msg("Ao vivo") : msg("Reconectando…")),
         );
     })();
     return () => {
@@ -303,9 +364,10 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
       ? data.orders.filter((o) => o.status === "pronto").length + data.calls.length
       : data.orders.filter((o) => ["recebido", "em_preparo"].includes(o.status) && (o.station ?? "cozinha") === station).length
     : 0;
-  useTabBadge(pendingCount, role === "garcom" ? "Salão • Comanda" : role === "bar" ? "Fila do bar • Comanda" : "Fila da cozinha • Comanda");
+  useTabBadge(pendingCount, role === "garcom" ? t("Salão • Comanda") : role === "bar" ? t("Fila do bar • Comanda") : t("Fila da cozinha • Comanda"));
+  /** Envia o comando e recarrega; devolve se deu certo. */
   const command = async (body: Record<string, unknown>) => {
-    if (!data || busy) return;
+    if (!data || busy) return false;
     setBusy(true);
     setError("");
     try {
@@ -318,8 +380,10 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
       if (!res.ok) throw new Error(json.error);
       await refresh();
       setClosing(false);
+      return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Tente novamente");
+      setError(e instanceof Error ? e.message : msg("Tente novamente"));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -332,18 +396,18 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   if (unauthorized)
     return (
       <main className="p-8 text-center">
-        <p>{error}</p>
+        <p>{t(error)}</p>
         <Link href="/app/login" className="mt-5 inline-block underline">
-          Entrar com minha conta
+          {t("Entrar com minha conta")}
         </Link>
       </main>
     );
   if (!data)
     return (
       <main className="p-8" role="status">
-        {error || "Preparando a operação…"}
+        {error ? t(error) : t("Preparando a operação…")}
         <button onClick={refresh} className="ml-4 underline">
-          Atualizar
+          {t("Atualizar")}
         </button>
       </main>
     );
@@ -414,6 +478,12 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   })();
   const actionStyle =
     "rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-50";
+  // Pausa e bloqueio (spec-fase3.md, seção 2): permissão block_orders + módulo.
+  const canBlock = !!data.can.block_orders && data.access?.features?.order_blocks !== false;
+  const paused = !!data.restaurant.orders_paused && data.access?.features?.order_blocks !== false;
+  const waitlistOn = role === "garcom" && data.access?.features?.waitlist !== false && Array.isArray(data.waitlist);
+  const waitingCount = (data.waitlist ?? []).filter((e) => e.status === "aguardando" || e.status === "chamado").length;
+  const persons = (n: number) => (n === 1 ? t("1 pessoa") : t("{n} pessoas", { n }));
   return (
     <main
       style={style}
@@ -424,18 +494,30 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
           {role === "cozinha" ? <Flame className="kitchen-flame" /> : role === "bar" ? <Wine className="kitchen-flame" /> : <UtensilsCrossed />}
           <div>
             <h1 className="font-heading text-2xl">
-              {role === "cozinha" ? `Cozinha • ${data.restaurant.name}` : role === "bar" ? `Bar • ${data.restaurant.name}` : `Olá, ${data.staff_name?.split(" ")[0] || "equipe"}`}
+              {role === "cozinha" ? t("Cozinha • {name}", { name: data.restaurant.name }) : role === "bar" ? t("Bar • {name}", { name: data.restaurant.name }) : t("Olá, {name}", { name: data.staff_name?.split(" ")[0] || t("equipe") })}
             </h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              {role === "cozinha" ? "Sabor no tempo certo." : role === "bar" ? "Bebidas na hora certa." : <>{data.restaurant.name} • <span className="live-indicator" /> {connection}</>}
+              {role === "cozinha" ? t("Sabor no tempo certo.") : role === "bar" ? t("Bebidas na hora certa.") : <>{data.restaurant.name} • <span className="live-indicator" /> {t(connection)}</>}
             </p>
           </div>
         </div>
         <div className="operation-tools">
-          {kitchenLike && <><span className="kitchen-mode"><Clock size={20}/>{{fifo:"Ordem de chegada",complexity:"Complexidade",balanced:"Equilibrado"}[data.settings.mode]}</span><span className="kitchen-count"><ChefHat size={27}/><span><b>{queue.length} na fila</b><small>Pedidos pendentes</small></span></span></>}
+          {kitchenLike && <><span className="kitchen-mode"><Clock size={20}/>{t(MODE_LABELS[data.settings.mode])}</span><span className="kitchen-count"><ChefHat size={27}/><span><b>{t("{n} na fila", { n: queue.length })}</b><small>{t("Pedidos pendentes")}</small></span></span></>}
+          {canBlock && (
+            <button
+              className={`pause-toggle ${paused ? "on" : ""}`}
+              aria-pressed={paused}
+              disabled={busy}
+              onClick={() => (paused ? void command({ action: "pause_orders", paused: false }) : setPausing((v) => !v))}
+            >
+              {paused ? <PlayCircle size={18} /> : <PauseCircle size={18} />}
+              <span>{paused ? t("Retomar pedidos") : t("Pausar pedidos")}</span>
+            </button>
+          )}
+          <LanguageSwitcher compact className="operation-language" />
           {data.memberships.length > 1 && (
             <select
-              aria-label="Restaurante"
+              aria-label={t("Restaurante")}
               value={data.restaurant_id}
               onChange={(e) => {
                 setRestaurant(e.target.value);
@@ -453,29 +535,56 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
           <button
             className={`sound-toggle ${alerts.enabled ? "on" : ""}`}
             aria-pressed={alerts.enabled}
-            aria-label={alerts.enabled ? "Desativar som" : "Ativar som"}
-            title={alerts.enabled ? "Som ligado" : "Ativar som dos alertas"}
+            aria-label={alerts.enabled ? t("Desativar som") : t("Ativar som")}
+            title={alerts.enabled ? t("Som ligado") : t("Ativar som dos alertas")}
             onClick={() => (alerts.enabled ? alerts.disable() : alerts.enable())}
           >
             {alerts.enabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-            {!alerts.enabled && <span>Ativar som</span>}
+            {!alerts.enabled && <span>{t("Ativar som")}</span>}
           </button>
-          <button onClick={refresh} aria-label="Atualizar">
+          <button onClick={refresh} aria-label={t("Atualizar")}>
             <RefreshCw size={20} />
           </button>
           <HelpButton support={data.restaurant.resellers} context={role === "garcom" ? "salão" : role === "bar" ? "bar" : "cozinha"} className="flex items-center gap-1 text-sm" />
           <Link href="/app" className="text-sm underline">
-            Painéis
+            {t("Painéis")}
           </Link>
-          <button aria-label="Sair" onClick={logout}>
+          <button aria-label={t("Sair")} onClick={logout}>
             <LogOut size={20} />
           </button>
         </div>
       </header>
       <AccessBanner access={data.access} support={data.restaurant.resellers} />
+      {pausing && !paused && (
+        <div className="pause-sheet">
+          <p><b>{t("Pausar novos pedidos do cardápio?")}</b> {t("Os clientes continuam vendo o cardápio, mas não conseguem enviar pedidos até alguém retomar.")}</p>
+          <BlockForm
+            label={t("Pausar pedidos")}
+            placeholder={t("Ex.: cozinha lotada, voltamos em 20 min")}
+            busy={busy}
+            t={t}
+            onCancel={() => setPausing(false)}
+            onConfirm={(reason) => void command({ action: "pause_orders", paused: true, reason }).then((ok) => ok && setPausing(false))}
+          />
+        </div>
+      )}
+      {paused && (
+        <p role="status" className="paused-banner">
+          <PauseCircle size={18} />
+          <span>
+            <b>{t("Pedidos pelo cardápio pausados.")}</b>
+            {data.restaurant.orders_paused_reason && ` ${data.restaurant.orders_paused_reason}`}
+          </span>
+          {canBlock && (
+            <button disabled={busy} onClick={() => void command({ action: "pause_orders", paused: false })}>
+              {t("Retomar")}
+            </button>
+          )}
+        </p>
+      )}
       {error && (
         <p role="alert" className="bg-destructive p-4 text-white">
-          {error}
+          {t(error)}
         </p>
       )}
       {kitchenLike ? (
@@ -488,7 +597,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                 }
                 onClick={() => setView("all")}
               >
-                Fila • {queue.length}
+                {t("Fila • {n}", { n: queue.length })}
               </button>
               <button
                 className={
@@ -496,17 +605,11 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                 }
                 onClick={() => setView("soldout")}
               >
-                Esgotados
+                {t("Esgotados")}
               </button>
             </nav>
-            <p className="text-muted-foreground"><span className="live-indicator"/> {connection} • Ordem:{" "}
-              {
-                {
-                  fifo: "Ordem de chegada",
-                  complexity: "Complexidade",
-                  balanced: "Equilibrado",
-                }[data.settings.mode]
-              }
+            <p className="text-muted-foreground"><span className="live-indicator"/> {t(connection)} • {t("Ordem:")}{" "}
+              {t(MODE_LABELS[data.settings.mode])}
             </p>
           </div>
           {view === "soldout" ? (
@@ -522,15 +625,15 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                       {i.name}
                       {i.stock_enabled && (
                         <small className={`stock-hint ${i.stock_quantity === 0 ? "empty" : (i.stock_quantity ?? 0) <= (i.low_stock_threshold ?? 0) ? "low" : ""}`}>
-                          {i.stock_quantity === 0 ? "Estoque zerado" : `Estoque: ${i.stock_quantity}${(i.stock_quantity ?? 0) <= (i.low_stock_threshold ?? 0) ? " • baixo" : ""}`}
+                          {i.stock_quantity === 0 ? t("Estoque zerado") : (i.stock_quantity ?? 0) <= (i.low_stock_threshold ?? 0) ? t("Estoque: {n} • baixo", { n: i.stock_quantity ?? 0 }) : t("Estoque: {n}", { n: i.stock_quantity ?? 0 })}
                         </small>
                       )}
                     </span>
                     <span className="flex items-center gap-3 text-sm">
-                      {i.sold_out ? "Esgotado" : "Disponível"}
+                      {i.sold_out ? t("Esgotado") : t("Disponível")}
                       <input
                         type="checkbox"
-                        aria-label={`Esgotado: ${i.name}`}
+                        aria-label={t("Esgotado: {name}", { name: i.name })}
                         checked={i.sold_out}
                         disabled={busy}
                         onChange={(e) =>
@@ -554,9 +657,9 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     className="mx-auto mb-5 text-muted-foreground"
                     size={48}
                   />
-                  <h2 className="font-heading text-3xl">Tudo em dia</h2>
+                  <h2 className="font-heading text-3xl">{t("Tudo em dia")}</h2>
                   <p className="mt-3 text-muted-foreground">
-                    Os novos pedidos aparecem aqui automaticamente.
+                    {t("Os novos pedidos aparecem aqui automaticamente.")}
                   </p>
                 </div>
               )}
@@ -565,19 +668,19 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                   const late = isLate(order, now);
                   const label = tableForOrder(order);
                   return <article key={order.id} className={"kitchen-ticket " + (late ? "ticket-late" : order.status === "em_preparo" ? "ticket-cooking" : "") + (fresh.has(order.id) ? " ticket-new" : "")}>
-                    <div className="ticket-heading"><h2 aria-label={"Mesa " + label}><span>Mesa</span><strong className={label.length > 4 ? "long-table-label" : ""}>{label}</strong></h2><div className="ticket-meta"><div className="ticket-status"><span className={"order-badge " + (late ? "late" : order.status === "em_preparo" ? "cooking" : "waiting")}>{late ? "Atrasado" : order.status === "em_preparo" ? "Em preparo" : "Aguardando"}</span><button aria-label={order.pinned ? "Desafixar pedido" : "Fixar pedido"} disabled={busy} onClick={() => void command({action:"pin",order_id:order.id,pinned:!order.pinned})}><Pin size={18} className={order.pinned ? "fill-primary text-primary" : "text-muted-foreground"}/></button></div><div className="ticket-timer"><Clock/>{elapsed(order.created_at)}</div><p>Tempo de preparo: {order.prep_minutes} min</p></div></div>
-                    <div className="ticket-items">{order.order_items.map(item => <div key={item.id} className={"ticket-item " + (item.cancelled_at ? "ticket-item-cancelled" : "")}><div><h3>{item.quantity}× {item.name_snapshot}{item.cancelled_at && <span className="ticket-cancelled-badge">Cancelado</span>}</h3>{item.modifiers_snapshot.length > 0 && <p>{item.modifiers_snapshot.map(m => m.name).join(" • ")}</p>}</div>{item.note && !item.cancelled_at && <span className="ticket-note"><MessageSquare size={17}/>{item.note}</span>}</div>)}</div>
-                    <button disabled={busy} className={"ticket-action " + (order.status === "em_preparo" ? "finish" : "")} onClick={() => void command({action:"status",order_id:order.id,status:order.status === "recebido" ? "em_preparo" : "pronto"})}><Check size={25}/>{order.status === "recebido" ? "Iniciar" : "Pronto"}</button>
+                    <div className="ticket-heading"><h2 aria-label={t("Mesa {label}", { label })}><span>{t("Mesa")}</span><strong className={label.length > 4 ? "long-table-label" : ""}>{label}</strong></h2><div className="ticket-meta"><div className="ticket-status"><span className={"order-badge " + (late ? "late" : order.status === "em_preparo" ? "cooking" : "waiting")}>{late ? t("Atrasado") : order.status === "em_preparo" ? t("Em preparo") : t("Aguardando")}</span><button aria-label={order.pinned ? t("Desafixar pedido") : t("Fixar pedido")} disabled={busy} onClick={() => void command({action:"pin",order_id:order.id,pinned:!order.pinned})}><Pin size={18} className={order.pinned ? "fill-primary text-primary" : "text-muted-foreground"}/></button></div><div className="ticket-timer"><Clock/>{elapsed(order.created_at)}</div><p>{t("Tempo de preparo: {n} min", { n: order.prep_minutes })}</p></div></div>
+                    <div className="ticket-items">{order.order_items.map(item => <div key={item.id} className={"ticket-item " + (item.cancelled_at ? "ticket-item-cancelled" : "")}><div><h3>{item.quantity}× {item.name_snapshot}{item.cancelled_at && <span className="ticket-cancelled-badge">{t("Cancelado")}</span>}</h3>{item.modifiers_snapshot.length > 0 && <p>{item.modifiers_snapshot.map(m => m.name).join(" • ")}</p>}</div>{item.note && !item.cancelled_at && <span className="ticket-note"><MessageSquare size={17}/>{item.note}</span>}</div>)}</div>
+                    <button disabled={busy} className={"ticket-action " + (order.status === "em_preparo" ? "finish" : "")} onClick={() => void command({action:"status",order_id:order.id,status:order.status === "recebido" ? "em_preparo" : "pronto"})}><Check size={25}/>{order.status === "recebido" ? t("Iniciar") : t("Pronto")}</button>
                   </article>;
                 })}
               </div>
               {ready.length > 0 && (
                 <div className="mt-8 rounded-2xl border border-[#2F7D5B] p-5">
                   <h2 className="text-xl font-semibold">
-                    Prontos para entrega • {ready.length}
+                    {t("Prontos para entrega • {n}", { n: ready.length })}
                   </h2>
                   <p className="mt-3">
-                    {ready.map((o) => `Mesa ${tableForOrder(o)}`).join(" • ")}
+                    {ready.map((o) => t("Mesa {label}", { label: tableForOrder(o) })).join(" • ")}
                   </p>
                 </div>
               )}
@@ -587,12 +690,12 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
       ) : (
         <section className="mx-auto max-w-3xl p-5">
           <div className="my-4 flex items-center justify-between gap-3">
-            <h2 className="font-heading text-3xl">Suas mesas</h2>
+            <h2 className="font-heading text-3xl">{panel === "waitlist" ? t("Lista de espera") : t("Suas mesas")}</h2>
             <div className="flex flex-wrap justify-end gap-2">
               {data.calls.length > 0 && (
                 <span role="status" className="call-counter">
                   <BellRing size={16} />
-                  {data.calls.length} {data.calls.length === 1 ? "chamada" : "chamadas"}
+                  {data.calls.length === 1 ? t("1 chamada") : t("{n} chamadas", { n: data.calls.length })}
                 </span>
               )}
               <span
@@ -600,24 +703,58 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                 className="flex items-center gap-2 rounded-full bg-[#2F7D5B] px-4 py-2 text-sm text-white"
               >
                 <Bell size={16} />
-                {ready.length} pedidos prontos
+                {t("{n} pedidos prontos", { n: ready.length })}
               </span>
             </div>
           </div>
+          {waitlistOn && (
+            <div className="waiter-mode" role="tablist" aria-label={t("Visão do salão")}>
+              <button role="tab" aria-selected={panel === "tables"} onClick={() => setPanel("tables")}>
+                <UtensilsCrossed size={16} /> {t("Mesas")}
+              </button>
+              <button role="tab" aria-selected={panel === "waitlist"} onClick={() => setPanel("waitlist")}>
+                <ListOrdered size={16} /> {t("Espera")}
+                {waitingCount > 0 && <span className="waiter-mode-count">{waitingCount}</span>}
+              </button>
+            </div>
+          )}
+          {waitlistOn && panel === "waitlist" ? (
+            <WaitlistPanel
+              entries={data.waitlist ?? []}
+              slug={data.restaurant.slug}
+              restaurantName={data.restaurant.name}
+              freeTables={data.tables
+                .filter((t) => t.active && !tabForTable(t.id))
+                .toSorted((a, b) => a.label.localeCompare(b.label, "pt-BR", { numeric: true }))}
+              busy={busy}
+              now={now}
+              command={command}
+              onSeated={(tableId) => {
+                setPanel("tables");
+                setSelectedTable(tableId);
+                setClosing(false);
+                setShowOrders(false);
+                setCancelling(null);
+                setMerging(false);
+                setBlocking(false);
+              }}
+              t={t}
+            />
+          ) : (<>
           <nav className="my-6 flex flex-wrap gap-2">
             {[
-              ["all", "Todas"],
-              ["occupied", "Ocupadas"],
-              ["free", "Livres"],
-              ["ready", "Prontos"],
-              ["calls", "Chamadas"],
+              ["all", msg("Todas")],
+              ["occupied", msg("Ocupadas")],
+              ["free", msg("Livres")],
+              ["ready", msg("Prontos")],
+              ["calls", msg("Chamadas")],
             ].map(([value, label]) => (
               <button
                 key={value}
                 onClick={() => setView(value)}
                 className={`rounded-full border px-5 py-3 ${view === value ? "bg-primary text-primary-foreground" : "bg-card"}`}
               >
-                {label}
+                {t(label)}
               </button>
             ))}
             <button
@@ -627,28 +764,28 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                   ? (setClosedToday(null), setClosedDetail(null))
                   : void jsonRequest(`/api/history/${data.restaurant_id}?period=today`)
                       .then((r: { tabs: NonNullable<typeof closedToday>["tabs"] }) => setClosedToday({ tabs: r.tabs }))
-                      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Não foi possível carregar"))
+                      .catch((e: unknown) => setError(e instanceof Error ? e.message : msg("Não foi possível carregar")))
               }
             >
-              Comandas fechadas hoje
+              {t("Comandas fechadas hoje")}
             </button>
           </nav>
           {closedToday && (
             <section className="closed-today">
               <header className="flex items-center justify-between gap-3">
-                <h3 className="font-heading text-2xl">Comandas fechadas hoje</h3>
-                <button className="text-sm underline" onClick={() => { setClosedToday(null); setClosedDetail(null); }}>Fechar</button>
+                <h3 className="font-heading text-2xl">{t("Comandas fechadas hoje")}</h3>
+                <button className="text-sm underline" onClick={() => { setClosedToday(null); setClosedDetail(null); }}>{t("Fechar")}</button>
               </header>
               {closedDetail && <TabDetail data={closedDetail} onClose={() => setClosedDetail(null)} />}
               {!closedDetail && (
                 <div className="space-y-2">
                   {closedToday.tabs.map((t) => (
-                    <button key={t.id} className="closed-row" aria-label={`Ver comanda fechada da mesa ${t.table}`} onClick={() => void jsonRequest(`/api/history/${data.restaurant_id}?tab_id=${t.id}`).then(setClosedDetail).catch((e: unknown) => setError(e instanceof Error ? e.message : "Não foi possível carregar"))}>
-                      <span><b>Mesa {t.table}{t.tables.length ? ` + ${t.tables.join(", ")}` : ""}</b><small>{when(t.closed_at)} • {t.guests} pessoas • {t.orders} pedidos</small></span>
+                    <button key={t.id} className="closed-row" aria-label={tr("Ver comanda fechada da mesa {label}", { label: t.table })} onClick={() => void jsonRequest(`/api/history/${data.restaurant_id}?tab_id=${t.id}`).then(setClosedDetail).catch((e: unknown) => setError(e instanceof Error ? e.message : msg("Não foi possível carregar")))}>
+                      <span><b>{tr("Mesa {label}", { label: t.table })}{t.tables.length ? ` + ${t.tables.join(", ")}` : ""}</b><small>{when(t.closed_at, locale)} • {persons(t.guests)} • {tr("{n} pedidos", { n: t.orders })}</small></span>
                       <b>{money(t.totals?.due_cents ?? 0)}</b>
                     </button>
                   ))}
-                  {!closedToday.tabs.length && <p className="text-sm text-muted-foreground">Nenhuma comanda fechada hoje.</p>}
+                  {!closedToday.tabs.length && <p className="text-sm text-muted-foreground">{t("Nenhuma comanda fechada hoje.")}</p>}
                 </div>
               )}
             </section>
@@ -688,21 +825,27 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                       setShowOrders(false);
                       setCancelling(null);
                       setMerging(false);
+                      setBlocking(false);
                     }}
                     className={`waiter-table ${hasReady ? "ready" : tab ? "occupied" : "free"} ${tableCalls.length ? "calling" : ""} ${isMerged ? "merged" : ""}`}
                   >
-                    <span className="text-sm text-muted-foreground">Mesa</span>
+                    <span className="text-sm text-muted-foreground">{tr("Mesa")}</span>
                     <h3 className="my-2 font-heading text-4xl">{t.label}</h3>
                     {tab && (isMerged || mergedTables(tab.id).length > 0) && (
                       <span className="merged-badge">
-                        <Link2 size={13} /> {isMerged ? `Unida à mesa ${tabLabel(tab.id).split("+")[0]}` : `Com ${mergedTables(tab.id).map((m) => m.label).join(", ")}`}
+                        <Link2 size={13} /> {isMerged ? tr("Unida à mesa {label}", { label: tabLabel(tab.id).split("+")[0] }) : tr("Com {labels}", { labels: mergedTables(tab.id).map((m) => m.label).join(", ") })}
                       </span>
                     )}
                     {tableCalls.map((c) => (
                       <span key={c.id} className="call-badge">
-                        <BellRing size={13} /> {CALL_BADGES[c.kind]}
+                        <BellRing size={13} /> {tr(CALL_BADGES[c.kind])}
                       </span>
                     ))}
+                    {tab?.orders_blocked && (
+                      <span className="blocked-badge">
+                        <Ban size={13} /> {tr("Pedidos bloqueados")}
+                      </span>
+                    )}
                     {tab ? (
                       <>
                         <p className="text-sm text-muted-foreground">
@@ -712,7 +855,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                               (now - Date.parse(tab.opened_at)) / 60000,
                             ),
                           )}{" "}
-                          min
+                          {tr("min")}
                         </p>
                         {!isMerged && <b className="mt-2 block">
                           {money(
@@ -722,17 +865,18 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                         {hasReady && (
                           <span className="mt-2 inline-flex items-center gap-1 text-sm text-[#2F7D5B]">
                             <Bell size={14} />
-                            Pronto
+                            {tr("Pronto")}
                           </span>
                         )}
                       </>
                     ) : (
-                      <p className="text-sm text-muted-foreground">Livre</p>
+                      <p className="text-sm text-muted-foreground">{tr("Livre")}</p>
                     )}
                   </button>
                 );
               })}
           </div>
+          </>)}
         </section>
       )}
       {selected && (
@@ -740,19 +884,19 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
           className="table-sheet-backdrop"
           role="dialog"
           aria-modal="true"
-          aria-label={`Mesa ${selected.label}`}
+          aria-label={t("Mesa {label}", { label: selected.label })}
         >
           <section className="table-sheet">
             <header className="flex justify-between">
               <h2 className="font-heading text-3xl">
                 {tab && tab.table_id !== selected.id
-                  ? `Mesa ${selected.label} • unida à ${tabLabel(tab.id)}`
+                  ? t("Mesa {label} • unida à {main}", { label: selected.label, main: tabLabel(tab.id) })
                   : tab && selectedMerged.length
-                    ? `Mesas ${tabLabel(tab.id).replaceAll("+", " + ")}`
-                    : `Mesa ${selected.label}`}
+                    ? t("Mesas {labels}", { labels: tabLabel(tab.id).replaceAll("+", " + ") })
+                    : t("Mesa {label}", { label: selected.label })}
               </h2>
               <button
-                aria-label="Fechar detalhe da mesa"
+                aria-label={t("Fechar detalhe da mesa")}
                 onClick={() => setSelectedTable(null)}
               >
                 <X />
@@ -760,35 +904,35 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
             </header>
             {error && (
               <p role="alert" className="my-3 text-destructive">
-                {error}
+                {t(error)}
               </p>
             )}
             {data.calls.filter((c) => c.table_id === selected.id).map((c) => (
               <div key={c.id} className="call-row" role="status">
                 <div>
-                  <b><BellRing size={16} /> {CALL_BADGES[c.kind]}</b>
+                  <b><BellRing size={16} /> {t(CALL_BADGES[c.kind])}</b>
                   <small>
                     {c.guest_id && tableGuests.find((g) => g.id === c.guest_id)?.name
                       ? `${tableGuests.find((g) => g.id === c.guest_id)!.name} • `
                       : ""}
-                    há {Math.max(0, Math.floor((now - Date.parse(c.created_at)) / 60000))} min
+                    {t("há {n} min", { n: Math.max(0, Math.floor((now - Date.parse(c.created_at)) / 60000)) })}
                     {c.note && ` • "${c.note}"`}
                   </small>
                 </div>
                 <button
                   disabled={busy}
                   className={actionStyle}
-                  aria-label={`Atender chamada: ${CALL_BADGES[c.kind]}`}
+                  aria-label={t("Atender chamada: {kind}", { kind: t(CALL_BADGES[c.kind]) })}
                   onClick={() => void command({ action: "attend_call", call_id: c.id })}
                 >
-                  Atendida
+                  {t("Atendida")}
                 </button>
               </div>
             ))}
             {!tab ? (
               <>
                 <p className="my-7 text-muted-foreground">
-                  A mesa está livre. Abra a comanda para liberar pedidos.
+                  {t("A mesa está livre. Abra a comanda para liberar pedidos.")}
                 </p>
                 <button
                   disabled={busy}
@@ -797,15 +941,15 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     void command({ action: "open", table_id: selected.id })
                   }
                 >
-                  Abrir mesa
+                  {t("Abrir mesa")}
                 </button>
               </>
             ) : (
               <>
                 <p className="mt-7 text-center text-muted-foreground">
-                  Código da mesa
+                  {t("Código da mesa")}
                 </p>
-                <p className="table-pin-digits" aria-label={`PIN ${tab.pin}`}>{tab.pin.split("").map((digit,i) => <span key={i}>{digit}</span>)}</p>
+                <p className="table-pin-digits" aria-label={t("PIN {pin}", { pin: tab.pin })}>{tab.pin.split("").map((digit,i) => <span key={i}>{digit}</span>)}</p>
                 <button
                   disabled={busy}
                   className="mx-auto block underline"
@@ -813,33 +957,61 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     void command({ action: "rotate", tab_id: tab.id })
                   }
                 >
-                  Gerar novo PIN
+                  {t("Gerar novo PIN")}
                 </button>
                 <p className="mt-2 text-center text-xs text-muted-foreground">
-                  Os celulares já liberados continuam funcionando.
+                  {t("Os celulares já liberados continuam funcionando.")}
                 </p>
+                {canBlock && (
+                  <div className={`tab-block-box ${tab.orders_blocked ? "on" : ""}`}>
+                    {tab.orders_blocked ? (
+                      <>
+                        <p>
+                          <Ban size={16} /> <b>{t("Novos pedidos desta mesa bloqueados.")}</b>
+                          {tab.orders_blocked_reason && <small> {tab.orders_blocked_reason}</small>}
+                        </p>
+                        <button disabled={busy} className="underline" onClick={() => void command({ action: "block_tab", tab_id: tab.id, blocked: false })}>
+                          {t("Desbloquear pedidos")}
+                        </button>
+                      </>
+                    ) : blocking ? (
+                      <BlockForm
+                        label={t("Bloquear pedidos")}
+                        placeholder={t("Ex.: conta em revisão")}
+                        busy={busy}
+                        t={t}
+                        onCancel={() => setBlocking(false)}
+                        onConfirm={(reason) => void command({ action: "block_tab", tab_id: tab.id, blocked: true, reason }).then((ok) => ok && setBlocking(false))}
+                      />
+                    ) : (
+                      <button disabled={busy} className="tab-block-button" onClick={() => setBlocking(true)}>
+                        <Ban size={15} /> {t("Bloquear novos pedidos desta mesa")}
+                      </button>
+                    )}
+                  </div>
+                )}
                 {(selectedMerged.length > 0 || data.can.merge_tables) && (
                   <div className="merge-box">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <b><Link2 size={16} /> Mesas desta comanda</b>
+                      <b><Link2 size={16} /> {t("Mesas desta comanda")}</b>
                       {data.can.merge_tables && (
                         <button className="text-sm underline" onClick={() => setMerging((v) => !v)}>
-                          {merging ? "Fechar" : "Unir mesa"}
+                          {merging ? t("Fechar") : t("Unir mesa")}
                         </button>
                       )}
                     </div>
                     <p className="merge-list">
-                      <span className="merge-chip">Mesa {data.tables.find((t) => t.id === tab.table_id)?.label} <small>principal</small></span>
+                      <span className="merge-chip">{t("Mesa {label}", { label: data.tables.find((x) => x.id === tab.table_id)?.label ?? "" })} <small>{t("principal")}</small></span>
                       {selectedMerged.map((m) => (
                         <span key={m.id} className="merge-chip">
-                          Mesa {m.label}
+                          {t("Mesa {label}", { label: m.label })}
                           {data.can.merge_tables && (
                             <button
                               disabled={busy}
-                              aria-label={`Separar mesa ${m.label}`}
+                              aria-label={t("Separar mesa {label}", { label: m.label })}
                               onClick={() => void command({ action: "split", tab_id: tab.id, table_id: m.id })}
                             >
-                              Separar
+                              {t("Separar")}
                             </button>
                           )}
                         </span>
@@ -847,15 +1019,15 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     </p>
                     {merging && (
                       <div className="merge-options">
-                        <p className="text-sm text-muted-foreground">O QR de qualquer mesa unida abre esta comanda, com o mesmo PIN.</p>
+                        <p className="text-sm text-muted-foreground">{t("O QR de qualquer mesa unida abre esta comanda, com o mesmo PIN.")}</p>
                         {freeTables.length > 0 && (
                           <div>
-                            <small>Mesas livres</small>
+                            <small>{t("Mesas livres")}</small>
                             <div className="flex flex-wrap gap-2">
                               {freeTables.map((t) => (
-                                <button key={t.id} disabled={busy} className="rounded-xl border px-4 py-2" aria-label={`Unir mesa ${t.label}`}
+                                <button key={t.id} disabled={busy} className="rounded-xl border px-4 py-2" aria-label={tr("Unir mesa {label}", { label: t.label })}
                                   onClick={() => void command({ action: "merge", tab_id: tab.id, table_id: t.id }).then(() => setMerging(false))}>
-                                  Mesa {t.label}
+                                  {tr("Mesa {label}", { label: t.label })}
                                 </button>
                               ))}
                             </div>
@@ -863,43 +1035,35 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                         )}
                         {otherOpenTables.length > 0 && (
                           <div>
-                            <small>Mesas com comanda aberta: os pedidos e as pessoas passam para cá e os clientes digitam este PIN de novo.</small>
+                            <small>{t("Mesas com comanda aberta: os pedidos e as pessoas passam para cá e os clientes digitam este PIN de novo.")}</small>
                             <div className="flex flex-wrap gap-2">
                               {otherOpenTables.map((t) => (
-                                <button key={t.id} disabled={busy} className="rounded-xl border border-destructive/50 px-4 py-2" aria-label={`Unir comanda da mesa ${t.label}`}
+                                <button key={t.id} disabled={busy} className="rounded-xl border border-destructive/50 px-4 py-2" aria-label={tr("Unir comanda da mesa {label}", { label: t.label })}
                                   onClick={() => void command({ action: "merge", tab_id: tab.id, table_id: t.id }).then(() => setMerging(false))}>
-                                  Mesa {t.label} <small>(aberta)</small>
+                                  {tr("Mesa {label}", { label: t.label })} <small>{tr("(aberta)")}</small>
                                 </button>
                               ))}
                             </div>
                           </div>
                         )}
                         {!freeTables.length && !otherOpenTables.length && (
-                          <p className="text-sm text-muted-foreground">Não há outras mesas para unir.</p>
+                          <p className="text-sm text-muted-foreground">{t("Não há outras mesas para unir.")}</p>
                         )}
                       </div>
                     )}
                   </div>
                 )}
-                <div className="table-order-summary"><span>{tableOrders.filter(o => o.status !== "cancelado").length} pedidos na comanda</span><button onClick={() => setShowOrders(v => !v)}>{showOrders ? "Recolher pedidos" : "Ver pedidos"}</button></div>
+                <div className="table-order-summary"><span>{t("{n} pedidos na comanda", { n: tableOrders.filter(o => o.status !== "cancelado").length })}</span><button onClick={() => setShowOrders(v => !v)}>{showOrders ? t("Recolher pedidos") : t("Ver pedidos")}</button></div>
                 <div className="mt-5 space-y-4">
                   {tableOrders.filter(o => showOrders || o.status === "pronto").map((o) => (
                     <article key={o.id} className="rounded-2xl border p-4">
                       <div className="flex justify-between">
                         <b>
-                          {
-                            {
-                              recebido: "Recebido",
-                              em_preparo: "Em preparo",
-                              pronto: "Pronto",
-                              entregue: "Entregue",
-                              cancelado: "Cancelado",
-                            }[o.status]
-                          }
+                          {t(ORDER_STATUS[o.status])}
                           {tableGuests.some((g) => g.id === o.guest_id) &&
                             ` • ${tableGuests.find((g) => g.id === o.guest_id)!.name}`}
                           {(o.station === "bar" || data.orders.some((x) => x.batch_id && x.batch_id === o.batch_id && x.id !== o.id)) && (
-                            <span className={`station-tag ${o.station ?? "cozinha"}`}>{STATION_LABELS[o.station ?? "cozinha"]}</span>
+                            <span className={`station-tag ${o.station ?? "cozinha"}`}>{t(STATION_LABELS[o.station ?? "cozinha"])}</span>
                           )}
                         </b>
                         <b>{money(o.total_cents)}</b>
@@ -909,23 +1073,23 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                           <p>
                             {i.quantity}× {i.name_snapshot}
                             {i.note && ` • ${i.note}`}
-                            {i.shared && " • dividido com a mesa"}
-                            {i.cancelled_at && ` • cancelado${i.cancel_reason ? ` (${i.cancel_reason})` : ""}`}
+                            {i.shared && ` • ${t("dividido com a mesa")}`}
+                            {i.cancelled_at && ` • ${t("cancelado")}${i.cancel_reason ? ` (${t(i.cancel_reason)})` : ""}`}
                           </p>
                           {data.can.cancel_items && !i.cancelled_at && ["recebido", "em_preparo", "pronto"].includes(o.status) && (
                             <button
                               disabled={busy}
                               className="shrink-0 text-xs text-destructive underline"
-                              aria-label={`Cancelar item ${i.name_snapshot}`}
+                              aria-label={t("Cancelar item {name}", { name: i.name_snapshot })}
                               onClick={() => setCancelling({ kind: "item", id: i.id, label: i.name_snapshot })}
                             >
-                              Cancelar
+                              {t("Cancelar")}
                             </button>
                           )}
                         </div>
                       ))}
                       {o.cancel_reason && o.status === "cancelado" && (
-                        <p className="mt-2 text-xs text-muted-foreground">Motivo: {o.cancel_reason}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">{t("Motivo: {reason}", { reason: t(o.cancel_reason) })}</p>
                       )}
                       {o.status === "pronto" && (
                         <button
@@ -939,7 +1103,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                             })
                           }
                         >
-                          Marcar entregue
+                          {t("Marcar entregue")}
                         </button>
                       )}
                       {data.can.cancel_items && ["recebido", "em_preparo", "pronto"].includes(
@@ -948,9 +1112,9 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                         <button
                           disabled={busy}
                           className="mt-3 text-sm text-destructive underline"
-                          onClick={() => setCancelling({ kind: "order", id: o.id, label: `pedido de ${money(o.total_cents)}` })}
+                          onClick={() => setCancelling({ kind: "order", id: o.id, label: money(o.total_cents) })}
                         >
-                          Cancelar pedido
+                          {t("Cancelar pedido")}
                         </button>
                       )}
                     </article>
@@ -973,27 +1137,27 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     }}
                   >
                     <p className="font-semibold">
-                      Cancelar {cancelling.kind === "item" ? `o item ${cancelling.label}` : `o ${cancelling.label}`}?
+                      {cancelling.kind === "item" ? t("Cancelar o item {name}?", { name: cancelling.label }) : t("Cancelar o pedido de {total}?", { total: cancelling.label })}
                     </p>
                     <label className="block text-sm">
-                      Motivo
-                      <select name="reason" className="mt-1 w-full rounded-xl border bg-background p-3" defaultValue={CANCEL_REASONS[0]} aria-label="Motivo do cancelamento">
-                        {CANCEL_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                      {t("Motivo")}
+                      <select name="reason" className="mt-1 w-full rounded-xl border bg-background p-3" defaultValue={CANCEL_REASONS[0]} aria-label={t("Motivo do cancelamento")}>
+                        {CANCEL_REASONS.map((r) => <option key={r} value={r}>{t(r)}</option>)}
                       </select>
                     </label>
                     <label className="block text-sm">
-                      Detalhe (opcional)
+                      {t("Detalhe (opcional)")}
                       <input name="detail" maxLength={150} className="mt-1 w-full rounded-xl border bg-background p-3" />
                     </label>
                     <div className="flex gap-3">
-                      <button disabled={busy} className="rounded-xl bg-destructive px-4 py-3 font-semibold text-white">Confirmar cancelamento</button>
-                      <button type="button" onClick={() => setCancelling(null)}>Voltar</button>
+                      <button disabled={busy} className="rounded-xl bg-destructive px-4 py-3 font-semibold text-white">{t("Confirmar cancelamento")}</button>
+                      <button type="button" onClick={() => setCancelling(null)}>{t("Voltar")}</button>
                     </div>
                   </form>
                 )}
                 {split.people.length > 0 && (
                   <div className="table-split">
-                    <h3>Divisão da conta</h3>
+                    <h3>{t("Divisão da conta")}</h3>
                     {split.people.map((person) => {
                       const guestId = person.id;
                       return (
@@ -1002,10 +1166,10 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                             <b>{person.name}</b>
                             <small>
                               {person.shared_cents > 0 &&
-                                `Inclui ${money(person.shared_cents)} dividido. `}
+                                `${t("Inclui {value} dividido.", { value: money(person.shared_cents) })} `}
                               {person.paid_cents !== null &&
                                 !person.settled &&
-                                `Já pagou ${money(person.paid_cents)}.`}
+                                t("Já pagou {value}.", { value: money(person.paid_cents) })}
                             </small>
                           </div>
                           <span className="table-split-amount">
@@ -1015,17 +1179,17 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                             (person.settled ? (
                               <span className="table-split-done">
                                 <span className="table-split-badge">
-                                  <Check size={14} /> Pago
+                                  <Check size={14} /> {t("Pago")}
                                 </span>
                               </span>
                             ) : (
                               <button
                                 disabled={busy || person.balance_cents <= 0}
                                 className="table-split-pay"
-                                aria-label={`Registrar pagamento de ${person.name}`}
+                                aria-label={t("Registrar pagamento de {name}", { name: person.name })}
                                 onClick={() => setPayForm({ guestId, amount: person.balance_cents })}
                               >
-                                Registrar pagamento
+                                {t("Registrar pagamento")}
                               </button>
                             ))}
                         </div>
@@ -1034,19 +1198,19 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                   </div>
                 )}
                 <div className="tab-totals">
-                  <div><span>Itens</span><b>{money(totals.items_cents)}</b></div>
+                  <div><span>{t("Itens")}</span><b>{money(totals.items_cents)}</b></div>
                   {(totals.fee_percent > 0 || totals.fee_waived) && (
                     <div>
                       <span>
-                        Taxa de serviço {totals.fee_percent}%
-                        {totals.fee_waived && <small> retirada</small>}
+                        {t("Taxa de serviço {pct}%", { pct: totals.fee_percent })}
+                        {totals.fee_waived && <small> {t("retirada")}</small>}
                         {(data.restaurant.service_fee_optional || data.can.apply_discount) && (
                           <button
                             disabled={busy}
                             className="ml-2 text-xs underline"
                             onClick={() => void command({ action: "fee", tab_id: tab.id, waived: !totals.fee_waived })}
                           >
-                            {totals.fee_waived ? "Aplicar" : "Retirar"}
+                            {totals.fee_waived ? t("Aplicar") : t("Retirar")}
                           </button>
                         )}
                       </span>
@@ -1056,21 +1220,21 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                   {(totals.discount_cents > 0 || data.can.apply_discount) && (
                     <div>
                       <span>
-                        Desconto
+                        {t("Desconto")}
                         {totals.discount_reason && <small> {totals.discount_reason}</small>}
                         {data.can.apply_discount && (
                           <button disabled={busy} className="ml-2 text-xs underline" onClick={() => setDiscountForm((v) => !v)}>
-                            {totals.discount_cents > 0 ? "Alterar" : "Aplicar"}
+                            {totals.discount_cents > 0 ? t("Alterar") : t("Aplicar")}
                           </button>
                         )}
                       </span>
                       <b>{totals.discount_cents > 0 ? `− ${money(totals.discount_cents)}` : money(0)}</b>
                     </div>
                   )}
-                  <div className="tab-totals-due"><span>Total</span><b>{money(totals.due_cents)}</b></div>
-                  <div><span>Pago</span><b>{money(totals.paid_cents)}</b></div>
+                  <div className="tab-totals-due"><span>{t("Total")}</span><b>{money(totals.due_cents)}</b></div>
+                  <div><span>{t("Pago")}</span><b>{money(totals.paid_cents)}</b></div>
                   <div className={totals.balance_cents > 0 ? "tab-totals-balance" : "tab-totals-ok"}>
-                    <span>{totals.balance_cents > 0 ? "Falta" : totals.balance_cents < 0 ? "Troco" : "Quitado"}</span>
+                    <span>{totals.balance_cents > 0 ? t("Falta") : totals.balance_cents < 0 ? t("Troco") : t("Quitado")}</span>
                     <b>{money(Math.abs(totals.balance_cents))}</b>
                   </div>
                 </div>
@@ -1088,37 +1252,37 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                       }).then(() => setDiscountForm(false));
                     }}
                   >
-                    <label>Desconto (R$)<input name="value" type="number" min={0} step="0.01" max={totals.items_cents / 100} defaultValue={totals.discount_cents / 100} aria-label="Valor do desconto" /></label>
-                    <label>Motivo<input name="reason" maxLength={200} required defaultValue={totals.discount_reason ?? ""} aria-label="Motivo do desconto" /></label>
-                    <div className="flex gap-3"><button disabled={busy} className={actionStyle}>Salvar desconto</button><button type="button" onClick={() => setDiscountForm(false)}>Voltar</button></div>
+                    <label>{t("Desconto (R$)")}<input name="value" type="number" min={0} step="0.01" max={totals.items_cents / 100} defaultValue={totals.discount_cents / 100} aria-label={t("Valor do desconto")} /></label>
+                    <label>{t("Motivo")}<input name="reason" maxLength={200} required defaultValue={totals.discount_reason ?? ""} aria-label={t("Motivo do desconto")} /></label>
+                    <div className="flex gap-3"><button disabled={busy} className={actionStyle}>{t("Salvar desconto")}</button><button type="button" onClick={() => setDiscountForm(false)}>{t("Voltar")}</button></div>
                   </form>
                 )}
                 {data.can.register_payment && (
                   <div className="payments-box">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <b>Pagamentos</b>
+                      <b>{t("Pagamentos")}</b>
                       <button
                         disabled={busy || totals.balance_cents <= 0}
                         className="text-sm underline"
                         onClick={() => setPayForm({ guestId: null, amount: Math.max(0, totals.balance_cents) })}
                       >
-                        Registrar pagamento da mesa
+                        {t("Registrar pagamento da mesa")}
                       </button>
                     </div>
-                    {tabPayments.length === 0 && <p className="text-sm text-muted-foreground">Nenhum pagamento registrado.</p>}
+                    {tabPayments.length === 0 && <p className="text-sm text-muted-foreground">{t("Nenhum pagamento registrado.")}</p>}
                     {tabPayments.map((p) => (
                       <div key={p.id} className="payment-row">
                         <span>
-                          {PAYMENT_LABELS[p.method]} • {p.guest_id ? tableGuests.find((g) => g.id === p.guest_id)?.name ?? "Pessoa" : "Mesa"}
-                          <small>{new Date(p.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}</small>
+                          {t(PAYMENT_LABELS[p.method])} • {p.guest_id ? tableGuests.find((g) => g.id === p.guest_id)?.name ?? t("Pessoa") : t("Mesa")}
+                          <small>{formatTime(locale, p.created_at)}</small>
                         </span>
                         <b>{money(p.amount_cents)}</b>
                         <button
                           disabled={busy}
-                          aria-label={`Desfazer pagamento de ${money(p.amount_cents)}`}
+                          aria-label={t("Desfazer pagamento de {value}", { value: money(p.amount_cents) })}
                           onClick={() => void command({ action: "void_payment", payment_id: p.id, reason: "Registrado errado" })}
                         >
-                          Desfazer
+                          {t("Desfazer")}
                         </button>
                       </div>
                     ))}
@@ -1138,11 +1302,11 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                         }}
                       >
                         <p className="text-sm">
-                          {payForm.guestId ? `Pagamento de ${tableGuests.find((g) => g.id === payForm.guestId)?.name ?? "pessoa"}` : "Pagamento da mesa"}
+                          {payForm.guestId ? t("Pagamento de {name}", { name: tableGuests.find((g) => g.id === payForm.guestId)?.name ?? t("pessoa") }) : t("Pagamento da mesa")}
                         </p>
-                        <label>Forma<select name="method" defaultValue="pix" aria-label="Forma de pagamento">{(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>)}</select></label>
-                        <label>Valor (R$)<input name="amount" type="number" min={0.01} step="0.01" required defaultValue={(payForm.amount / 100).toFixed(2)} aria-label="Valor recebido" /></label>
-                        <div className="flex gap-3"><button disabled={busy} className={actionStyle}>Confirmar pagamento</button><button type="button" onClick={() => setPayForm(null)}>Voltar</button></div>
+                        <label>{t("Forma")}<select name="method" defaultValue="pix" aria-label={t("Forma de pagamento")}>{(Object.keys(PAYMENT_LABELS) as PaymentMethod[]).map((m) => <option key={m} value={m}>{t(PAYMENT_LABELS[m])}</option>)}</select></label>
+                        <label>{t("Valor (R$)")}<input name="amount" type="number" min={0.01} step="0.01" required defaultValue={(payForm.amount / 100).toFixed(2)} aria-label={t("Valor recebido")} /></label>
+                        <div className="flex gap-3"><button disabled={busy} className={actionStyle}>{t("Confirmar pagamento")}</button><button type="button" onClick={() => setPayForm(null)}>{t("Voltar")}</button></div>
                       </form>
                     )}
                   </div>
@@ -1151,13 +1315,12 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                   <div className="rounded-2xl bg-secondary p-4">
                     {totals.balance_cents > 0 ? (
                       <p className="mb-3 font-semibold text-destructive">
-                        Faltam {money(totals.balance_cents)}. Registre o pagamento antes de fechar.
-                        {unpaid.length > 0 && ` Ainda falta pagar: ${unpaid.map((p) => `${p.name} (${money(p.balance_cents)})`).join(", ")}.`}
+                        {t("Faltam {value}. Registre o pagamento antes de fechar.", { value: money(totals.balance_cents) })}
+                        {unpaid.length > 0 && ` ${t("Ainda falta pagar: {list}.", { list: unpaid.map((p) => `${p.name} (${money(p.balance_cents)})`).join(", ") })}`}
                       </p>
                     ) : (
                       <p>
-                        Confirmar fechamento? O código e as sessões dos clientes
-                        serão invalidados.
+                        {t("Confirmar fechamento? O código e as sessões dos clientes serão invalidados.")}
                       </p>
                     )}
                     <div className="mt-4 flex gap-3">
@@ -1168,9 +1331,9 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                           void command({ action: "close", tab_id: tab.id })
                         }
                       >
-                        Confirmar fechamento
+                        {t("Confirmar fechamento")}
                       </button>
-                      <button onClick={() => setClosing(false)}>Voltar</button>
+                      <button onClick={() => setClosing(false)}>{t("Voltar")}</button>
                     </div>
                   </div>
                 ) : data.can.close_tab ? (
@@ -1179,11 +1342,11 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     className="w-full rounded-xl border border-destructive p-4 text-destructive"
                     onClick={() => setClosing(true)}
                   >
-                    Fechar comanda
+                    {t("Fechar comanda")}
                   </button>
                 ) : (
                   <p className="text-center text-sm text-muted-foreground">
-                    Peça a alguém com permissão para fechar a comanda.
+                    {t("Peça a alguém com permissão para fechar a comanda.")}
                   </p>
                 )}
               </>

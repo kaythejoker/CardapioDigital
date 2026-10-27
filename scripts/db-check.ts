@@ -857,6 +857,206 @@ async function main() {
     check("anônimo não resolve hosts", (await fails("select public.resolve_host('x.com')")) !== null);
   });
 
+  // Fase 3: lista de espera, bloqueios e idiomas ------------------------------------
+  const brasaFeatures = (await accessOf(BRASA)).features;
+  check("módulos novos ligados para quem já existe", brasaFeatures.waitlist && brasaFeatures.order_blocks && brasaFeatures.languages);
+  const f3 = (await db.query<{ id: string; label: string; qr_token: string }>(
+    "insert into tables (restaurant_id, label) values ($1, 'F3a'), ($1, 'F3b'), ($1, 'F3c') returning id, label, qr_token", [BRASA])).rows;
+  const [f3a, f3b, f3c] = f3;
+  await db.query("update menu_items set active=true, sold_out=false, stock_enabled=false, stock_quantity=null where id=$1", [suco.id]);
+  const f3Tabs: Record<string, string> = {};
+  await asUser(users.garcomBrasa, async () => {
+    for (const t of [f3a, f3b]) f3Tabs[t.label] = (await db.query<{ id: string }>("select id from public.open_table($1)", [t.id])).rows[0].id;
+  });
+  await db.query("update tabs set pin = case table_id when $1 then '3131' else '3232' end where id in ($2, $3)", [f3a.id, f3Tabs.F3a, f3Tabs.F3b]);
+  await db.query("select public.verify_table_pin('brasa-bistro',$1,'3131','device-f3a','f3a-1','Ivo')", [f3a.qr_token]);
+  await db.query("select public.verify_table_pin('brasa-bistro',$1,'3232','device-f3b','f3b-1','Jai')", [f3b.qr_token]);
+  let f3req = 100;
+  const f3submit = (t: { qr_token: string }, hash: string, item = suco.id) =>
+    fails("select public.submit_table_order('brasa-bistro',$1,$2,$3,$4::jsonb)",
+      [t.qr_token, hash, `b0000000-0000-4000-8000-000000000${f3req++}`, JSON.stringify([{ item_id: item, quantity: 1, note: "", modifier_ids: [] }])]);
+  check("pedido normal passa antes dos bloqueios", (await f3submit(f3a, "f3a-1")) === null);
+
+  // PIN opcional por restaurante
+  const pinCall = (pin: string, device: string, hash: string, name: string | null) =>
+    db.query<{ r: { status?: number; tab_id?: string; error?: string } }>(
+      "select public.verify_table_pin('brasa-bistro',$1,$2,$3,$4,$5) as r", [f3b.qr_token, pin, device, hash, name]).then((q) => q.rows[0].r);
+  check("PIN continua exigido por padrão", (await pinCall("", "device-np", "np-0", "Lia")).status === 401);
+  await asUser(users.gestorBrasa, async () => { await db.query("update restaurants set pin_required=false where id=$1", [BRASA]); });
+  check("sem PIN, o nome basta para entrar na comanda", (await pinCall("", "device-np", "np-1", "Lia")).tab_id === f3Tabs.F3b);
+  check("sem PIN, nome continua obrigatório", (await pinCall("", "device-np", "np-2", null)).status === 400);
+  check("sem PIN, mesa sem comanda aberta continua fechada", (await db.query<{ r: { status?: number } }>(
+    "select public.verify_table_pin('brasa-bistro',$1,'','device-np','np-3','Lia') as r", [f3c.qr_token])).rows[0].r.status === 409);
+  check("sem PIN, sessão envia pedido", (await f3submit(f3b, "np-1")) === null);
+  await asUser(users.gestorBrasa, async () => { await db.query("update restaurants set pin_required=true where id=$1", [BRASA]); });
+  check("religar o PIN volta a exigir o código", (await pinCall("", "device-np2", "np-4", "Lia")).status === 401);
+  check("ligar e desligar o PIN fica no registro",
+    (await count("select 1 from audit_log where restaurant_id=$1 and action in ('pin_exigido','pin_dispensado')", [BRASA])) === 2);
+  await asUser(users.garcomBrasa, async () => {
+    await db.query("update restaurants set pin_required=false where id=$1", [BRASA]);
+  });
+  check("garçom não muda a exigência do PIN", (await count("select 1 from restaurants where id=$1 and pin_required", [BRASA])) === 1);
+
+  // Pausar pedidos do restaurante
+  await asUser(users.cozinhaBrasa, async () => {
+    const r = (await db.query<{ r: { orders_paused: boolean } }>("select public.set_orders_paused($1, true, 'Cozinha lotada') as r", [BRASA])).rows[0].r;
+    check("cozinha pausa os pedidos (permissão padrão)", r.orders_paused === true);
+  });
+  const pausedErr = await f3submit(f3a, "f3a-1");
+  check("pedido pausado é recusado com o motivo", !!pausedErr && pausedErr.includes("Cozinha lotada"), pausedErr ?? "");
+  check("pausa fica no registro", (await count("select 1 from audit_log where restaurant_id=$1 and action='pedidos_pausados'", [BRASA])) === 1);
+  await asUser(users.gestorCantina, async () => {
+    check("gestor de outro restaurante não pausa o Brasa", (await fails("select public.set_orders_paused($1, false)", [BRASA])) !== null);
+  });
+  await db.query("update restaurant_members set permissions = permissions || '{\"block_orders\":false}'::jsonb where user_id=$1", [garcomSemFechar]);
+  await asUser(garcomSemFechar, async () => {
+    check("garçom sem a permissão não retoma", (await fails("select public.set_orders_paused($1, false)", [BRASA])) !== null);
+  });
+  await asUser(users.garcomBrasa, async () => { await db.query("select public.set_orders_paused($1, false)", [BRASA]); });
+  check("retomar volta a aceitar pedidos", (await f3submit(f3a, "f3a-1")) === null);
+  check("retomar limpa o motivo", (await count("select 1 from restaurants where id=$1 and not orders_paused and orders_paused_reason is null", [BRASA])) === 1);
+
+  // Bloquear uma comanda
+  await asUser(users.garcomBrasa, async () => {
+    await db.query("select public.set_tab_blocked($1, true, 'Suspeita')", [f3Tabs.F3a]);
+  });
+  check("mesa bloqueada não envia pedido", (await f3submit(f3a, "f3a-1")) !== null);
+  check("outra mesa do restaurante continua enviando", (await f3submit(f3b, "f3b-1")) === null);
+  check("mesa bloqueada ainda chama o garçom",
+    !(await db.query<{ r: { error?: string } }>("select public.create_service_call('brasa-bistro',$1,'f3a-1','device-f3a','garcom') as r", [f3a.qr_token])).rows[0].r.error);
+  await asUser(users.garcomBrasa, async () => { await db.query("select public.set_tab_blocked($1, false)", [f3Tabs.F3a]); });
+  check("mesa desbloqueada volta a enviar", (await f3submit(f3a, "f3a-1")) === null);
+  check("bloqueio de mesa fica no registro", (await count("select 1 from audit_log where tab_id=$1 and action in ('mesa_bloqueada','mesa_desbloqueada')", [f3Tabs.F3a])) === 2);
+
+  // Bloquear item e categoria, janela de horário
+  await asUser(users.gestorBrasa, async () => {
+    await db.query("update menu_items set blocked=true, blocked_reason='Acabou o gelo' where id=$1", [suco.id]);
+  });
+  const blockedErr = await f3submit(f3a, "f3a-1");
+  check("item bloqueado é recusado", !!blockedErr && blockedErr.includes("não está disponível"), blockedErr ?? "");
+  check("item bloqueado fica no registro", (await count("select 1 from audit_log where entity_id=$1 and action='item_bloqueado'", [suco.id])) === 1);
+  await asUser(users.cozinhaBrasa, async () => {
+    check("cozinha não bloqueia item (só esgota)", (await fails("update menu_items set blocked=false where id=$1", [suco.id])) !== null);
+  });
+  await asUser(users.gestorBrasa, async () => {
+    await db.query("update menu_items set blocked=false where id=$1", [suco.id]);
+    check("desbloquear limpa o motivo", (await count("select 1 from menu_items where id=$1 and blocked_reason is null", [suco.id])) === 1);
+    await db.query("update categories set blocked=true where id=$1", [suco.category_id]);
+  });
+  check("categoria bloqueada recusa o item", (await f3submit(f3a, "f3a-1")) !== null);
+  await asUser(users.gestorBrasa, async () => {
+    await db.query("update categories set blocked=false where id=$1", [suco.category_id]);
+    check("horário com uma ponta só é recusado", (await fails("update menu_items set available_from='11:00' where id=$1", [suco.id])) !== null);
+    check("horário com início igual ao fim é recusado", (await fails("update menu_items set available_from='11:00', available_until='11:00' where id=$1", [suco.id])) !== null);
+  });
+  const nowSp = (await db.query<{ h: number }>("select extract(hour from now() at time zone 'America/Sao_Paulo')::int as h")).rows[0].h;
+  const hh = (h: number) => `${String((h + 24) % 24).padStart(2, "0")}:00`;
+  await asUser(users.gestorBrasa, async () => {
+    await db.query("update menu_items set available_from=$2, available_until=$3 where id=$1", [suco.id, hh(nowSp + 1), hh(nowSp + 3)]);
+  });
+  const outErr = await f3submit(f3a, "f3a-1");
+  check("item fora do horário é recusado", !!outErr && outErr.includes("fora do horário"), outErr ?? "");
+  await asUser(users.gestorBrasa, async () => {
+    // Janela que vira a meia-noite e contém a hora atual.
+    await db.query("update menu_items set available_from=$2, available_until=$3 where id=$1", [suco.id, hh(nowSp), hh(nowSp - 22)]);
+  });
+  check("janela que vira a meia-noite aceita dentro do horário", (await f3submit(f3a, "f3a-1")) === null);
+  check("within_hours: janela comum e virada", (await db.query<{ a: boolean; b: boolean; c: boolean }>(
+    "select private.within_hours(null, null) as a, private.within_hours($1::time, $2::time) as b, private.within_hours($3::time, $4::time) as c",
+    [hh(nowSp), hh(nowSp + 1), hh(nowSp + 1), hh(nowSp)])).rows.every((r) => r.a && r.b && !r.c));
+  await asUser(users.gestorBrasa, async () => {
+    await db.query("update menu_items set available_from=null, available_until=null where id=$1", [suco.id]);
+  });
+
+  // Idiomas
+  await asUser(users.gestorBrasa, async () => {
+    const ok = await db.query("update menu_items set translations=$2::jsonb where id=$1 returning id",
+      [suco.id, JSON.stringify({ en: { name: "Orange juice", description: "Fresh" }, es: { name: "Jugo de naranja" } })]);
+    check("gestor salva tradução do item", ok.rows.length === 1);
+    check("idioma fora de en/es é recusado", (await fails("update menu_items set translations='{\"fr\":{\"name\":\"Jus\"}}' where id=$1", [suco.id])) !== null);
+    check("campo desconhecido na tradução é recusado", (await fails("update menu_items set translations='{\"en\":{\"price\":\"1\"}}' where id=$1", [suco.id])) !== null);
+    check("categoria aceita só o nome traduzido", (await fails("update categories set translations='{\"en\":{\"description\":\"x\"}}' where id=$1", [suco.category_id])) !== null);
+    const saved = await db.query<{ id: string }>("select public.save_menu_item($1, null, $2::jsonb) as id", [BRASA, JSON.stringify({
+      category_id: suco.category_id, name: "Limonada F3", description: "", price_cents: 900, photo_url: null, prep_minutes: 3, active: true, featured: false,
+      translations: { en: { name: "Lemonade" } }, blocked: true, blocked_reason: "Teste", available_from: "10:00", available_until: "16:00",
+      groups: [{ name: "Gelo", required: false, min_select: 0, max_select: 1, position: 0, translations: { es: { name: "Hielo" } },
+        modifiers: [{ name: "Com gelo", price_cents: 0, position: 0, translations: { en: { name: "With ice" } } }] }],
+    })]);
+    const lemon = saved.rows[0].id;
+    check("editor salva traduções, bloqueio e horário do item",
+      (await count("select 1 from menu_items where id=$1 and translations->'en'->>'name'='Lemonade' and blocked and blocked_reason='Teste' and available_from='10:00'", [lemon])) === 1);
+    check("editor salva traduções de grupos e adicionais",
+      (await count("select 1 from modifier_groups g join modifiers m on m.group_id=g.id where g.menu_item_id=$1 and g.translations->'es'->>'name'='Hielo' and m.translations->'en'->>'name'='With ice'", [lemon])) === 1);
+    await db.query("delete from menu_items where id=$1", [lemon]);
+  });
+
+  // Lista de espera
+  let w1 = "", w2 = "", w3 = "";
+  await asUser(users.garcomBrasa, async () => {
+    w1 = (await db.query<{ id: string; number: number }>("select id, number from public.add_waitlist_entry($1, '  Maria   Souza ', 4, '(11) 99999-0000')", [BRASA])).rows[0].id;
+    w2 = (await db.query<{ id: string }>("select id from public.add_waitlist_entry($1, 'João', 2)", [BRASA])).rows[0].id;
+    w3 = (await db.query<{ id: string }>("select id from public.add_waitlist_entry($1, 'Lia', 3)", [BRASA])).rows[0].id;
+  });
+  const wl = async (id: string) => (await db.query<{ number: number; status: string; name: string; phone: string | null; public_token: string; called_at: string | null }>(
+    "select number, status, name, phone, public_token, called_at from waitlist_entries where id=$1", [id])).rows[0];
+  check("números de ordem 1, 2 e 3 no dia", (await wl(w1)).number === 1 && (await wl(w2)).number === 2 && (await wl(w3)).number === 3);
+  check("nome e telefone normalizados", (await wl(w1)).name === "Maria Souza" && (await wl(w1)).phone === "11999990000");
+  await db.query("insert into waitlist_entries (restaurant_id, day, number, name, party_size) values ($1, current_date - 1, 1, 'Ontem', 2)", [BRASA]);
+  check("o mesmo número pode existir em outro dia", (await count("select 1 from waitlist_entries where restaurant_id=$1 and number=1", [BRASA])) === 2);
+  await asUser(users.cozinhaBrasa, async () => {
+    check("cozinha não cadastra na espera", (await fails("select public.add_waitlist_entry($1, 'X', 2)", [BRASA])) !== null);
+  });
+  await asUser(users.gestorCantina, async () => {
+    check("gestor da Cantina não vê a espera do Brasa", (await count("select 1 from waitlist_entries where restaurant_id=$1", [BRASA])) === 0);
+    check("gestor da Cantina não cadastra no Brasa", (await fails("select public.add_waitlist_entry($1, 'X', 2)", [BRASA])) !== null);
+  });
+  await asUser(null, async () => {
+    check("anônimo não lê a espera", (await fails("select * from waitlist_entries")) !== null);
+    check("anônimo não chama o status público direto", (await fails("select public.waitlist_status('brasa-bistro', gen_random_uuid())")) !== null);
+  });
+  const status = async (id: string) => (await db.query<{ r: { number: number; ahead: number; status: string; name: string } | null }>(
+    "select public.waitlist_status('brasa-bistro', $1) as r", [(await wl(id)).public_token])).rows[0].r;
+  check("status público: posição e primeiro nome", (await status(w3))?.ahead === 2 && (await status(w1))?.name === "Maria");
+  check("token de outro restaurante não vale", (await db.query<{ r: unknown }>("select public.waitlist_status('cantina-da-nonna', $1) as r", [(await wl(w1)).public_token])).rows[0].r === null);
+  await asUser(users.garcomBrasa, async () => {
+    await db.query("update waitlist_entries set status='chamado' where id=$1", [w1]);
+    check("chamar carimba o horário", !!(await wl(w1)).called_at);
+    await db.query("update waitlist_entries set status='aguardando' where id=$1", [w1]);
+    check("desfazer a chamada limpa o horário", (await wl(w1)).called_at === null);
+    check("não troca o número de ordem", (await fails("update waitlist_entries set number=9 where id=$1", [w2])) !== null);
+    await db.query("update waitlist_entries set status='desistiu' where id=$1", [w2]);
+    check("desistência é final", (await fails("update waitlist_entries set status='aguardando' where id=$1", [w2])) !== null);
+    check("sentar numa mesa ocupada é recusado", (await fails("select public.seat_waitlist_entry($1, $2)", [w1, f3a.id])) !== null);
+    const seated = (await db.query<{ r: { tab_id: string; pin: string } }>("select public.seat_waitlist_entry($1, $2) as r", [w1, f3c.id])).rows[0].r;
+    check("sentar numa mesa livre abre a comanda", !!seated.tab_id && /^\d{4}$/.test(seated.pin));
+  });
+  check("quem desistiu ou sentou não conta na frente", (await status(w3))?.ahead === 0);
+  check("espera fica no registro", (await count("select 1 from audit_log where entity='waitlist' and restaurant_id=$1", [BRASA])) >= 6);
+  await db.query("update waitlist_entries set created_at = now() - interval '13 hours' where id=$1", [w3]);
+  check("link público vence em 12 horas", (await status(w3)) === null);
+
+  // Módulos desligados no plano
+  await asUser(users.revenda, async () => {
+    await db.query("update plans set features = features || '{\"waitlist\":false,\"order_blocks\":false,\"languages\":false}'::jsonb where id=$1", [basico]);
+    await db.query("select public.set_subscription($1, $2, 'ativa')", [BRASA, basico]);
+    await db.query("update subscriptions set current_period_end=null where restaurant_id=$1", [BRASA]);
+  });
+  check("plano sem os módulos desliga as chaves", (await accessOf(BRASA)).features.waitlist === false);
+  await asUser(users.garcomBrasa, async () => {
+    check("espera fora do plano é recusada", (await fails("select public.add_waitlist_entry($1, 'X', 2)", [BRASA])) !== null);
+    check("pausa fora do plano é recusada", (await fails("select public.set_orders_paused($1, true)", [BRASA])) !== null);
+  });
+  await asUser(users.gestorBrasa, async () => {
+    check("bloqueio de item fora do plano é recusado", (await fails("update menu_items set blocked=true where id=$1", [suco.id])) !== null);
+  });
+  await db.query("update tabs set orders_blocked=true where id=$1", [f3Tabs.F3a]);
+  check("bloqueio antigo não trava pedido com o módulo desligado", (await f3submit(f3a, "f3a-1")) === null);
+  await db.query("update tabs set orders_blocked=false where id=$1", [f3Tabs.F3a]);
+  await asUser(users.revenda, async () => {
+    await db.query("select public.set_subscription($1, $2, 'ativa')", [BRASA, completo]);
+    await db.query("update subscriptions set current_period_end=null where restaurant_id=$1", [BRASA]);
+  });
+
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTudo certo.");
   process.exitCode = failures ? 1 : 0;
 }

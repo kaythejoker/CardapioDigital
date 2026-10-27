@@ -34,6 +34,8 @@ import {
   ROLE_LABELS,
   type Permissions,
 } from "@/lib/permissions";
+import { LanguageSwitcher, useI18n } from "@/components/i18n";
+import { LOCALE_TAGS, msg } from "@/lib/i18n";
 
 export const fieldClass =
   "admin-field mt-2 w-full rounded-xl border bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary";
@@ -52,7 +54,7 @@ export async function jsonRequest(url: string, body?: unknown) {
         },
   );
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Não foi possível concluir");
+  if (!response.ok) throw new Error(data.error || msg("Não foi possível concluir"));
   return data;
 }
 
@@ -82,13 +84,14 @@ export function AdminShell({
   features?: Partial<Record<string, boolean>>;
   children: ReactNode;
 }) {
+  const { locale, t } = useI18n();
   const router = useRouter();
   const [date, setDate] = useState("");
   useEffect(() => {
     const initial = setTimeout(
       () =>
         setDate(
-          new Date().toLocaleDateString("pt-BR", {
+          new Date().toLocaleDateString(LOCALE_TAGS[locale], {
             timeZone: "America/Sao_Paulo",
             weekday: "long",
             day: "numeric",
@@ -99,25 +102,25 @@ export function AdminShell({
       0,
     );
     return () => clearTimeout(initial);
-  }, []);
+  }, [locale]);
   const nav = (
     revenda
       ? [
-          { id: "restaurants", label: "Restaurantes", icon: Store },
-          { id: "plans", label: "Planos", icon: CreditCard },
-          { id: "brand", label: "Marca", icon: Palette },
+          { id: "restaurants", label: msg("Restaurantes"), icon: Store },
+          { id: "plans", label: msg("Planos"), icon: CreditCard },
+          { id: "brand", label: msg("Marca"), icon: Palette },
         ]
       : [
-          { id: "home", label: "Início", icon: Home },
-          { id: "menu", label: "Cardápio", icon: UtensilsCrossed },
-          { id: "stock", label: "Estoque", icon: Package },
-          { id: "finance", label: "Financeiro", icon: Banknote },
-          { id: "reports", label: "Relatórios", icon: BarChart3 },
-          { id: "history", label: "Histórico", icon: History },
-          { id: "survey", label: "Satisfação", icon: Star },
-          { id: "tables", label: "Mesas e QR", icon: QrCode },
-          { id: "team", label: "Equipe", icon: Users },
-          { id: "settings", label: "Configurações", icon: Settings },
+          { id: "home", label: msg("Início"), icon: Home },
+          { id: "menu", label: msg("Cardápio"), icon: UtensilsCrossed },
+          { id: "stock", label: msg("Estoque"), icon: Package },
+          { id: "finance", label: msg("Financeiro"), icon: Banknote },
+          { id: "reports", label: msg("Relatórios"), icon: BarChart3 },
+          { id: "history", label: msg("Histórico"), icon: History },
+          { id: "survey", label: msg("Satisfação"), icon: Star },
+          { id: "tables", label: msg("Mesas e QR"), icon: QrCode },
+          { id: "team", label: msg("Equipe"), icon: Users },
+          { id: "settings", label: msg("Configurações"), icon: Settings },
         ]
   ).filter((n) => (!views?.length || views.includes(n.id)) && featureFor(n.id, features));
   const style = {
@@ -147,15 +150,13 @@ export function AdminShell({
             <h1 className="font-heading text-2xl font-semibold">
               {brand.brand_name}
             </h1>
-            <p className="text-xs text-muted-foreground">
-              Mais tempo para o que importa.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("Mais tempo para o que importa.")}</p>
           </div>
         </div>
-        <p className="navigation-label">{revenda ? "Administração" : "Restaurante"}</p>
+        <p className="navigation-label">{revenda ? t("Administração") : t("Restaurante")}</p>
         <nav
           className="admin-navigation"
-          aria-label="Menu do painel"
+          aria-label={t("Menu do painel")}
         >
           {nav.map((n) => (
             <button
@@ -165,31 +166,23 @@ export function AdminShell({
               className={`flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-left ${active === n.id ? "bg-primary/10 font-semibold text-primary" : "text-muted-foreground hover:bg-secondary"}`}
             >
               <n.icon size={20} />
-              {n.label}
+              {t(n.label)}
             </button>
           ))}
         </nav>
         <div className="admin-shortcuts">
           <Link className="flex items-center gap-2" href="/app">
-            <LayoutGrid size={18} />
-            Meus painéis
-          </Link>
+            <LayoutGrid size={18} />{t("Meus painéis")}</Link>
           {!revenda && (
             <>
               <Link className="flex items-center gap-2" href="/app/cozinha">
-                <ChefHat size={18} />
-                Cozinha
-              </Link>
+                <ChefHat size={18} />{t("Cozinha")}</Link>
               {features?.bar !== false && (
                 <Link className="flex items-center gap-2" href="/app/bar">
-                  <Wine size={18} />
-                  Bar
-                </Link>
+                  <Wine size={18} />{t("Bar")}</Link>
               )}
               <Link className="flex items-center gap-2" href="/app/garcom">
-                <Users size={18} />
-                Salão
-              </Link>
+                <Users size={18} />{t("Salão")}</Link>
             </>
           )}
           {support && <HelpButton support={support} context={revenda ? "painel da revenda" : `painel do gestor${restaurant ? ` de ${restaurant.name}` : ""}`} />}
@@ -201,18 +194,16 @@ export function AdminShell({
               router.refresh();
             }}
           >
-            <LogOut size={18} />
-            Sair
-          </button>
+            <LogOut size={18} />{t("Sair")}</button>
         </div>
-        {restaurant && <div className="admin-restaurant"><div className="flex items-center gap-3">{restaurant.logo_url ? <Image src={restaurant.logo_url} alt="" width={40} height={40} className="rounded-full" /> : <span className="restaurant-avatar"><Store size={21}/></span>}<div><strong>{restaurant.name}</strong><small>Restaurante</small></div></div>{restaurant.menuUrl && <Link href={restaurant.menuUrl} target="_blank">Ver cardápio do cliente ↗</Link>}</div>}
+        {restaurant && <div className="admin-restaurant"><div className="flex items-center gap-3">{restaurant.logo_url ? <Image src={restaurant.logo_url} alt="" width={40} height={40} className="rounded-full" /> : <span className="restaurant-avatar"><Store size={21}/></span>}<div><strong>{restaurant.name}</strong><small>{t("Restaurante")}</small></div></div>{restaurant.menuUrl && <Link href={restaurant.menuUrl} target="_blank">{t("Ver cardápio do cliente ↗")}</Link>}</div>}
       </aside>
       <div className="admin-content">
         <header className="admin-header">
-          <div><span className="admin-eyebrow">{revenda ? "Central da revenda" : restaurant?.name || "Gestão do restaurante"}</span><h2 className="font-heading text-3xl font-semibold lg:text-4xl">
+          <div><span className="admin-eyebrow">{revenda ? t("Central da revenda") : restaurant?.name || t("Gestão do restaurante")}</span><h2 className="font-heading text-3xl font-semibold lg:text-4xl">
             {title}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">{date}</p></div><Link href="/app" className="admin-account"><span>{revenda ? "R" : "G"}</span><div><strong>{revenda ? "Revendedor" : "Gestor"}</strong><small>Meus painéis</small></div><span aria-hidden="true">⌄</span></Link>
+          <p className="mt-2 text-sm text-muted-foreground">{date}</p></div><LanguageSwitcher className="admin-language" /><Link href="/app" className="admin-account"><span>{revenda ? "R" : "G"}</span><div><strong>{revenda ? t("Revendedor") : t("Gestor")}</strong><small>{t("Meus painéis")}</small></div><span aria-hidden="true">⌄</span></Link>
         </header>
         {children}
       </div>
@@ -241,6 +232,7 @@ export function ImageUpload({
   label: string;
   preview?: ReactNode;
 }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
@@ -257,7 +249,7 @@ export function ImageUpload({
       ))}
       <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl border bg-card px-4 py-3">
         <Upload size={18} />
-        {busy ? "Enviando…" : "Escolher imagem"}
+        {busy ? t("Enviando…") : t("Escolher imagem")}
         <input
           type="file"
           aria-label={label}
@@ -282,19 +274,17 @@ export function ImageUpload({
               if (!res.ok) throw new Error(data.error);
               onChange(data.url);
             } catch (e) {
-              setError(e instanceof Error ? e.message : "Falha no upload");
+              setError(e instanceof Error ? e.message : msg("Falha no upload"));
             } finally {
               setBusy(false);
             }
           }}
         />
       </label>
-      <p className="mt-2 text-xs text-muted-foreground">
-        JPG, PNG ou WebP, até 5 MB.
-      </p>
+      <p className="mt-2 text-xs text-muted-foreground">{t("JPG, PNG ou WebP, até 5 MB.")}</p>
       {error && (
         <p role="alert" className="mt-2 text-sm text-destructive">
-          {error}
+          {t(error)}
         </p>
       )}
     </div>
@@ -313,9 +303,10 @@ export function RolePicker({
   onChange: (roles: string[]) => void;
   name?: string;
 }) {
+  const { t } = useI18n();
   return (
     <fieldset className="role-picker">
-      <legend className="mb-2">Papéis</legend>
+      <legend className="mb-2">{t("Papéis")}</legend>
       <div className="flex flex-wrap gap-3">
         {STAFF_ROLES.map((role) => (
           <label key={role} className="flex items-center gap-2 rounded-xl border px-3 py-2">
@@ -332,7 +323,7 @@ export function RolePicker({
                 )
               }
             />
-            {ROLE_LABELS[role]}
+            {t(ROLE_LABELS[role])}
           </label>
         ))}
       </div>
@@ -350,6 +341,7 @@ export function PermissionPicker({
   value: Permissions;
   onChange: (permissions: Permissions) => void;
 }) {
+  const { t } = useI18n();
   const effective = effectivePermissions(roles, value);
   const manager = roles.includes("manager");
   const groups = [...new Set(PERMISSIONS.map((p) => p.group))];
@@ -363,7 +355,7 @@ export function PermissionPicker({
               <label key={p.key} className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  aria-label={p.label}
+                  aria-label={t(p.label)}
                   checked={effective[p.key]}
                   disabled={manager}
                   onChange={(e) => {
@@ -374,14 +366,14 @@ export function PermissionPicker({
                     onChange(next);
                   }}
                 />
-                {p.label}
+                {t(p.label)}
               </label>
             ))}
           </div>
         </fieldset>
       ))}
       {manager && (
-        <p className="text-xs text-muted-foreground">O gestor tem todas as permissões.</p>
+        <p className="text-xs text-muted-foreground">{t("O gestor tem todas as permissões.")}</p>
       )}
     </div>
   );
@@ -396,6 +388,7 @@ export function TeamForm({
   manager?: boolean;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -410,7 +403,7 @@ export function TeamForm({
         const form = e.currentTarget;
         const values = new FormData(form);
         if (!manager && !roles.length) {
-          setError("Escolha pelo menos um papel");
+          setError(msg("Escolha pelo menos um papel"));
           return;
         }
         setBusy(true);
@@ -432,22 +425,18 @@ export function TeamForm({
           setPermissions({});
           onSaved();
         } catch (e) {
-          setError(e instanceof Error ? e.message : "Tente novamente");
+          setError(e instanceof Error ? e.message : msg("Tente novamente"));
         } finally {
           setBusy(false);
         }
       }}
     >
       <h3 className="font-heading text-2xl">
-        {manager ? "Convidar gestor" : "Adicionar à equipe"}
+        {manager ? t("Convidar gestor") : t("Adicionar à equipe")}
       </h3>
-      <label className="block">
-        Nome
-        <input name="name" required maxLength={100} className={fieldClass} />
+      <label className="block">{t("Nome")}<input name="name" required maxLength={100} className={fieldClass} />
       </label>
-      <label className="block">
-        E-mail
-        <input name="email" type="email" required className={fieldClass} />
+      <label className="block">{t("E-mail")}<input name="email" type="email" required className={fieldClass} />
       </label>
       {!manager && (
         <>
@@ -459,29 +448,25 @@ export function TeamForm({
             }}
           />
           <details className="rounded-xl border p-3">
-            <summary className="cursor-pointer text-sm">Permissões (padrão do papel)</summary>
+            <summary className="cursor-pointer text-sm">{t("Permissões (padrão do papel)")}</summary>
             <div className="mt-3">
               <PermissionPicker roles={roles} value={permissions} onChange={setPermissions} />
             </div>
           </details>
         </>
       )}
-      <label className="block">
-        Tipo de acesso
-        <select
+      <label className="block">{t("Tipo de acesso")}<select
           value={mode}
           onChange={(e) => setMode(e.target.value)}
           className={fieldClass}
         >
-          <option value="invite">Convite por e-mail</option>
-          <option value="password">Criar com senha inicial</option>
+          <option value="invite">{t("Convite por e-mail")}</option>
+          <option value="password">{t("Criar com senha inicial")}</option>
         </select>
       </label>
       {mode === "password" && (
-        <label className="block">
-          Senha inicial
-          <input
-            aria-label="Senha inicial"
+        <label className="block">{t("Senha inicial")}<input
+            aria-label={t("Senha inicial")}
             name="password"
             type="password"
             autoComplete="new-password"
@@ -490,27 +475,25 @@ export function TeamForm({
             maxLength={72}
             className={fieldClass}
           />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Pelo menos 12 caracteres. Passe a senha à pessoa.
-          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{t("Pelo menos 12 caracteres. Passe a senha à pessoa.")}</p>
         </label>
       )}
       {error && (
         <p role="alert" className="text-destructive">
-          {error}
+          {t(error)}
         </p>
       )}
       {message && (
         <p role="status" className="text-[#2F7D5B]">
-          {message}
+          {t(message)}
         </p>
       )}
       <button disabled={busy} className={actionClass}>
         {busy
-          ? "Salvando…"
+          ? t("Salvando…")
           : mode === "invite"
-            ? "Enviar convite"
-            : "Criar acesso"}
+            ? t("Enviar convite")
+            : t("Criar acesso")}
       </button>
     </form>
   );

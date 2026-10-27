@@ -7,18 +7,21 @@ import { z } from "zod";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
 import {
   ArrowLeft,
+  Ban,
   ChefHat,
   Bell,
   Clock,
   Check,
   ChevronRight,
   Minus,
+  PauseCircle,
   Plus,
   Search,
   ShoppingBag,
@@ -29,6 +32,7 @@ import {
   brandForeground,
   CALL_LABELS,
   groupOrders,
+  localizeMenu,
   money,
   STATION_LABELS,
   type CartLine,
@@ -40,6 +44,9 @@ import {
   SURVEY_TAGS,
 } from "@/lib/menu-types";
 import { splitTab, type SplitGuest } from "@/lib/split";
+import { LanguageSwitcher, useI18n } from "@/components/i18n";
+import { formatTime, type Translate } from "@/lib/i18n";
+import { unavailable } from "@/lib/availability";
 
 const NAME_STORAGE = "comanda:name";
 
@@ -87,11 +94,11 @@ type SurveyPayload = {
   comment: string;
 };
 
-function Stars({ value, onChange, label }: { value: number; onChange: (n: number) => void; label: string }) {
+function Stars({ value, onChange, label, t }: { value: number; onChange: (n: number) => void; label: string; t: Translate }) {
   return (
     <div className="survey-stars" role="radiogroup" aria-label={label}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={`${n} ${n === 1 ? "estrela" : "estrelas"}`} className={n <= value ? "on" : ""} onClick={() => onChange(n)}>
+        <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={n === 1 ? t("1 estrela") : t("{n} estrelas", { n })} className={n <= value ? "on" : ""} onClick={() => onChange(n)}>
           ★
         </button>
       ))}
@@ -107,6 +114,7 @@ function SurveyCard({
   result,
   onSubmit,
   onDismiss,
+  t,
 }: {
   restaurant: string;
   guestName: string;
@@ -114,6 +122,7 @@ function SurveyCard({
   result: { google: string | null; rating: number } | null;
   onSubmit: (payload: SurveyPayload) => Promise<void>;
   onDismiss: () => void;
+  t: Translate;
 }) {
   const [rating, setRating] = useState(0);
   const [extra, setExtra] = useState<{ food: number | null; service: number | null; wait: number | null }>({ food: null, service: null, wait: null });
@@ -122,20 +131,20 @@ function SurveyCard({
   if (result)
     return (
       <section className="survey-card" role="status">
-        <h2 className="font-heading text-2xl">{result.rating >= 4 ? "Que bom!" : "Obrigado."}</h2>
-        <p>{result.google ? "Pode deixar sua avaliação no Google? Leva um minuto." : "Seu comentário vai direto para o restaurante."}</p>
+        <h2 className="font-heading text-2xl">{result.rating >= 4 ? t("Que bom!") : t("Obrigado.")}</h2>
+        <p>{result.google ? t("Pode deixar sua avaliação no Google? Leva um minuto.") : t("Seu comentário vai direto para o restaurante.")}</p>
         {result.google && (
           <a href={result.google} target="_blank" rel="noopener noreferrer" className="survey-google">
-            Avaliar no Google
+            {t("Avaliar no Google")}
           </a>
         )}
       </section>
     );
   return (
-    <section className="survey-card" aria-label="Pesquisa de satisfação">
-      <h2 className="font-heading text-2xl">Como foi sua experiência no {restaurant}?</h2>
-      <p className="survey-sub">{guestName}, sua opinião ajuda a casa a melhorar.</p>
-      <Stars value={rating} onChange={setRating} label="Nota geral" />
+    <section className="survey-card" aria-label={t("Pesquisa de satisfação")}>
+      <h2 className="font-heading text-2xl">{t("Como foi sua experiência no {restaurant}?", { restaurant })}</h2>
+      <p className="survey-sub">{t("{name}, sua opinião ajuda a casa a melhorar.", { name: guestName })}</p>
+      <Stars t={t} value={rating} onChange={setRating} label={t("Nota geral")} />
       {rating > 0 && (
         <form
           className="survey-form"
@@ -145,29 +154,30 @@ function SurveyCard({
           }}
         >
           <div className="survey-extra">
-            {([["food", "Comida"], ["service", "Atendimento"], ["wait", "Tempo de espera"]] as const).map(([key, label]) => (
+            {([["food", t("Comida")], ["service", t("Atendimento")], ["wait", t("Tempo de espera")]] as const).map(([key, label]) => (
               <div key={key}>
                 <span>{label}</span>
-                <Stars value={extra[key] ?? 0} onChange={(n) => setExtra((x) => ({ ...x, [key]: n }))} label={label} />
+                <Stars t={t} value={extra[key] ?? 0} onChange={(n) => setExtra((x) => ({ ...x, [key]: n }))} label={label} />
               </div>
             ))}
           </div>
           <div className="survey-tags">
+            {/* A etiqueta vai em português para o restaurante; só a tela traduz. */}
             {SURVEY_TAGS.map((tag) => (
-              <button key={tag} type="button" aria-pressed={tags.includes(tag)} onClick={() => setTags((t) => (t.includes(tag) ? t.filter((x) => x !== tag) : [...t, tag]))}>
-                {tag}
+              <button key={tag} type="button" aria-pressed={tags.includes(tag)} onClick={() => setTags((list) => (list.includes(tag) ? list.filter((x) => x !== tag) : [...list, tag]))}>
+                {t(tag)}
               </button>
             ))}
           </div>
-          <textarea maxLength={300} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Quer contar algo? (opcional)" aria-label="Comentário" />
-          <small>O comentário vai para o restaurante com o seu nome e a mesa.</small>
+          <textarea maxLength={300} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t("Quer contar algo? (opcional)")} aria-label={t("Comentário")} />
+          <small>{t("O comentário vai para o restaurante com o seu nome e a mesa.")}</small>
           <button disabled={busy} className="survey-send">
-            {busy ? "Enviando…" : "Enviar"}
+            {busy ? t("Enviando…") : t("Enviar")}
           </button>
         </form>
       )}
       <button type="button" className="survey-skip" onClick={onDismiss}>
-        Agora não
+        {t("Agora não")}
       </button>
     </section>
   );
@@ -187,7 +197,20 @@ export function Menu({
 }) {
   const base = `/api/customer/${slug}/${qrToken}`;
   const storage = `cart:${slug}:${qrToken}`;
-  const [menu, setMenu] = useState<MenuData | null>(initialMenu ?? null);
+  const [rawMenu, setMenu] = useState<MenuData | null>(initialMenu ?? null);
+  const { locale, t } = useI18n(rawMenu?.languages !== false);
+  const menu = useMemo(() => rawMenu && localizeMenu(rawMenu, locale), [rawMenu, locale]);
+  // Relógio para itens com horário: começa nulo (o servidor decide) e anda a cada 30 s.
+  const [clock, setClock] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setClock(Date.now());
+    const first = setTimeout(tick, 0);
+    const timer = setInterval(tick, 30_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, []);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("featured");
@@ -273,7 +296,7 @@ export function Menu({
       if (!response.ok) throw new Error(data.error);
       setMenu(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível carregar");
+      setError(e instanceof Error ? e.message : "Não foi possível carregar o cardápio");
     }
   }, [slug, qrToken, consult]);
   useEffect(() => {
@@ -363,6 +386,17 @@ export function Menu({
   };
   const itemFor = (line: CartLine) =>
     menu?.items.find((i) => i.id === line.item_id);
+  // Item bloqueado ou fora do horário (módulo de bloqueios): aparece apagado.
+  const blockedWhy = (item: MenuItem) => {
+    if (clock === null) return null;
+    const why = unavailable(item, menu?.categories.find((c) => c.id === item.category_id), new Date(clock));
+    if (!why) return null;
+    return why.kind === "hours"
+      ? t("Disponível das {from} às {until}", { from: why.from, until: why.until })
+      : why.reason || t("Indisponível no momento");
+  };
+  // Pedido pausado pelo restaurante ou mesa bloqueada: o cardápio fica para ver.
+  const orderingStopped = !!menu?.paused || !!menu?.tab_blocked;
   const unitPrice = (item: MenuItem, ids: string[]) =>
     item.price_cents +
     item.modifier_groups
@@ -389,7 +423,7 @@ export function Menu({
       const count = g.modifiers.filter((m) => modifiers.includes(m.id)).length;
       if (count < g.min_select || count > g.max_select) {
         setError(
-          `Escolha de ${g.min_select} a ${g.max_select} opções em ${g.name}`,
+          t("Escolha de {min} a {max} opções em {group}", { min: g.min_select, max: g.max_select, group: g.name }),
         );
         return;
       }
@@ -415,18 +449,20 @@ export function Menu({
     return (
       <main className="mx-auto max-w-lg p-8 text-center">
         <UtensilsCrossed className="mx-auto mb-5" />
-        <h1 className="font-heading text-3xl">Seu cardápio</h1>
+        <h1 className="font-heading text-3xl">{t("Seu cardápio")}</h1>
         <p role="status" className="mt-5">
-          {error || "Preparando uma boa experiência…"}
+          {error ? t(error) : t("Preparando uma boa experiência…")}
         </p>
         {error && (
           <button className="mt-5 underline" onClick={refresh}>
-            Tentar novamente
+            {t("Tentar novamente")}
           </button>
         )}
       </main>
     );
   const brand = restaurantBrand(menu.restaurant);
+  // Restaurante pode dispensar o PIN (spec-fase3.md, seção 4): aí só o nome.
+  const needsPin = menu.pin_required !== false;
   const style = {
     "--brand": brand.primary_color,
     "--menu-background": menu.restaurant.background_color || "#faf7f2",
@@ -456,9 +492,9 @@ export function Menu({
       await refresh();
     });
   const CALL_DONE: Record<ServiceCallKind, string> = {
-    garcom: "Avisamos o garçom. Ele vem até a mesa.",
-    conta: "Avisamos o garçom. Ele vem até a mesa para fechar.",
-    ajuda: "Avisamos o garçom. Ele vem até a mesa.",
+    garcom: t("Avisamos o garçom. Ele vem até a mesa."),
+    conta: t("Avisamos o garçom. Ele vem até a mesa para fechar."),
+    ajuda: t("Avisamos o garçom. Ele vem até a mesa."),
   };
   return (
     <main
@@ -470,8 +506,8 @@ export function Menu({
           role="alert"
           className="sticky top-0 z-50 flex items-center justify-between bg-destructive p-4 text-white"
         >
-          {error}
-          <button aria-label="Fechar aviso" onClick={() => setError("")}>
+          {t(error)}
+          <button aria-label={t("Fechar aviso")} onClick={() => setError("")}>
             <X />
           </button>
         </div>
@@ -482,7 +518,7 @@ export function Menu({
             {menu.restaurant.cover_url && (
               <MenuPhoto slug={slug}
                 src={menu.restaurant.cover_url}
-                alt="Salão do restaurante"
+                alt={t("Salão do restaurante")}
                 fill
                 priority
                 sizes="(max-width: 576px) 100vw, 576px"
@@ -490,11 +526,12 @@ export function Menu({
               />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/75 to-transparent" />
+            {menu.languages !== false && <LanguageSwitcher compact className="menu-language" />}
             <div className="relative">
               {menu.restaurant.logo_url && (
                 <MenuPhoto slug={slug}
                   src={menu.restaurant.logo_url}
-                  alt={`Logo ${menu.restaurant.name}`}
+                  alt={t("Logo {name}", { name: menu.restaurant.name })}
                   width={56}
                   height={56}
                   className="mb-3 rounded-xl object-contain"
@@ -504,7 +541,7 @@ export function Menu({
                 {menu.restaurant.name}
               </h1>
               <span className="mt-3 inline-block rounded-full bg-background px-4 py-2 text-sm text-foreground">
-                {menu.table ? `Mesa ${menu.table.label}` : "Cardápio para consulta"}
+                {menu.table ? t("Mesa {label}", { label: menu.table.label }) : t("Cardápio para consulta")}
               </span>
             </div>
           </header>
@@ -513,18 +550,18 @@ export function Menu({
               <Search size={20} />
               <input
                 disabled={!hydrated}
-                aria-label="Buscar no cardápio"
+                aria-label={t("Buscar no cardápio")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar no cardápio"
+                placeholder={t("Buscar no cardápio")}
                 className="w-full bg-transparent outline-none"
               />
             </label>
             <nav
-              aria-label="Categorias"
+              aria-label={t("Categorias")}
               className="flex gap-2 overflow-x-auto pb-1"
             >
-              {[{ id: "featured", name: "Destaques" }, ...menu.categories].map(
+              {[{ id: "featured", name: t("Destaques") }, ...menu.categories].map(
                 (c) => (
                   <button
                     key={c.id}
@@ -544,15 +581,11 @@ export function Menu({
                 <b>{CALL_DONE[myCalls[0]?.kind ?? callDone ?? "garcom"]}</b>
                 {myCalls.length > 0 ? (
                   <small>
-                    {myCalls.map((c) => CALL_LABELS[c.kind]).join(" • ")} • às{" "}
-                    {new Date(myCalls[0].created_at).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      timeZone: "America/Sao_Paulo",
-                    })}
+                    {myCalls.map((c) => t(CALL_LABELS[c.kind])).join(" • ")} •{" "}
+                    {t("às {time}", { time: formatTime(locale, myCalls[0].created_at) })}
                   </small>
                 ) : (
-                  <small>Chamada atendida.</small>
+                  <small>{t("Chamada atendida.")}</small>
                 )}
               </div>
               {myCalls.length > 0 ? (
@@ -566,10 +599,10 @@ export function Menu({
                     })
                   }
                 >
-                  Cancelar chamada
+                  {t("Cancelar chamada")}
                 </button>
               ) : (
-                <button onClick={() => setCallDone(null)} aria-label="Fechar aviso da chamada">
+                <button onClick={() => setCallDone(null)} aria-label={t("Fechar aviso da chamada")}>
                   <X size={16} />
                 </button>
               )}
@@ -577,9 +610,27 @@ export function Menu({
           )}
           {menu.suspended && (
             <section className="survey-card" role="alert">
-              <h2 className="font-heading text-2xl">Cardápio temporariamente indisponível</h2>
-              <p className="survey-sub">O restaurante está resolvendo uma pendência com o sistema. Chame alguém da equipe para fazer seu pedido.</p>
+              <h2 className="font-heading text-2xl">{t("Cardápio temporariamente indisponível")}</h2>
+              <p className="survey-sub">{t("O restaurante está resolvendo uma pendência com o sistema. Chame alguém da equipe para fazer seu pedido.")}</p>
             </section>
+          )}
+          {menu.open && menu.paused && (
+            <div className="order-stop-banner" role="status">
+              <PauseCircle size={20} />
+              <div>
+                <b>{t("Pedidos pausados no momento")}</b>
+                <small>{menu.paused.reason || t("O restaurante volta a receber pedidos em instantes. Você pode olhar o cardápio.")}</small>
+              </div>
+            </div>
+          )}
+          {menu.open && !menu.paused && menu.tab_blocked && (
+            <div className="order-stop-banner" role="status">
+              <Ban size={20} />
+              <div>
+                <b>{t("Novos pedidos desta mesa estão bloqueados")}</b>
+                <small>{t("Chame o garçom para continuar.")}</small>
+              </div>
+            </div>
           )}
           {!menu.open && menu.survey && !surveyDismissed && (
             <SurveyCard
@@ -593,6 +644,7 @@ export function Menu({
                 })
               }
               result={surveyResult}
+              t={t}
               onDismiss={() => {
                 setSurveyDismissed(true);
                 try {
@@ -604,18 +656,18 @@ export function Menu({
             />
           )}
           {consult && !menu.suspended && (
-            <p className="closed-table-notice">Para pedir, escaneie o QR code da sua mesa.</p>
+            <p className="closed-table-notice">{t("Para pedir, escaneie o QR code da sua mesa.")}</p>
           )}
           {!menu.open && !menu.suspended && !consult && (
             <p className="closed-table-notice">
-              Chame o garçom para abrir a mesa
+              {t("Chame o garçom para abrir a mesa")}
             </p>
           )}
           <div className="menu-sections">
             {!search && category === "featured" && (
               <section>
                 <h2 className="my-4 font-heading text-3xl">
-                  Destaques da casa
+                  {t("Destaques da casa")}
                 </h2>
                 <div className="grid grid-cols-2 gap-3">
                   {menu.items
@@ -624,7 +676,7 @@ export function Menu({
                       <button
                         key={i.id}
                         onClick={() => openItem(i)}
-                        className="featured-item overflow-hidden bg-card text-left"
+                        className={`featured-item overflow-hidden bg-card text-left ${blockedWhy(i) ? "item-unavailable" : ""}`}
                       >
                         {i.photo_url && (
                           <div className="relative aspect-[1.4]">
@@ -642,6 +694,7 @@ export function Menu({
                           <p className="mt-2 font-bold text-primary">
                             {money(i.price_cents)}
                           </p>
+                          {blockedWhy(i) && <small className="item-unavailable-note">{blockedWhy(i)}</small>}
                         </div>
                       </button>
                     ))}
@@ -657,8 +710,8 @@ export function Menu({
                   (i) =>
                     i.category_id === c.id &&
                     `${i.name} ${i.description}`
-                      .toLocaleLowerCase("pt-BR")
-                      .includes(search.toLocaleLowerCase("pt-BR")),
+                      .toLocaleLowerCase()
+                      .includes(search.toLocaleLowerCase()),
                 );
                 return items.length ? (
                   <section key={c.id}>
@@ -670,7 +723,7 @@ export function Menu({
                         <button
                           key={i.id}
                           onClick={() => openItem(i)}
-                          className="menu-list-item flex w-full overflow-hidden bg-card text-left"
+                          className={`menu-list-item flex w-full overflow-hidden bg-card text-left ${blockedWhy(i) ? "item-unavailable" : ""}`}
                         >
                           <div className="flex-1 p-4">
                             <h3 className="font-heading text-xl">{i.name}</h3>
@@ -682,11 +735,13 @@ export function Menu({
                                 {money(i.price_cents)}
                                 {i.stock_left != null && i.stock_left <= 5 && (
                                   <small className="stock-left-inline">
-                                    {i.stock_left === 1 ? "última unidade" : `últimas ${i.stock_left}`}
+                                    {i.stock_left === 1 ? t("última unidade") : t("últimas {n}", { n: i.stock_left })}
                                   </small>
                                 )}
                               </b>
-                              {menu.open && (
+                              {blockedWhy(i) ? (
+                                <small className="item-unavailable-note">{blockedWhy(i)}</small>
+                              ) : menu.open && !orderingStopped && (
                                 <span className="rounded-full bg-primary p-2 text-primary-foreground">
                                   <Plus size={18} />
                                 </span>
@@ -713,9 +768,9 @@ export function Menu({
             {search &&
               !menu.items.some((i) =>
                 `${i.name} ${i.description}`
-                  .toLowerCase()
-                  .includes(search.toLowerCase()),
-              ) && <p className="py-10 text-center">Nenhum item encontrado.</p>}
+                  .toLocaleLowerCase()
+                  .includes(search.toLocaleLowerCase()),
+              ) && <p className="py-10 text-center">{t("Nenhum item encontrado.")}</p>}
             <footer className="py-8 text-center text-sm text-muted-foreground">
               {brand.logo_url && (
                 <MenuPhoto slug={slug}
@@ -726,7 +781,7 @@ export function Menu({
                   className="mx-auto mb-2 object-contain"
                 />
               )}
-              Por {brand.brand_name}
+              {t("Por {brand}", { brand: brand.brand_name })}
             </footer>
           </div>
           {menu.authorized && (
@@ -734,7 +789,7 @@ export function Menu({
               className="mx-5 my-3 flex items-center gap-2 underline"
               onClick={() => setScreen("tab")}
             >
-              <UtensilsCrossed size={18} /> Minha comanda
+              <UtensilsCrossed size={18} /> {t("Minha comanda")}
             </button>
           )}
           {!(menu.survey && !surveyDismissed && !menu.open) && !menu.suspended && !consult && <div className={`call-fab-wrap ${cart.length > 0 && menu.open ? "with-cart" : ""}`}>
@@ -746,25 +801,25 @@ export function Menu({
               }
             >
               <Bell size={18} />
-              {menu.open ? "Chamar garçom" : "Chamar garçom para abrir a mesa"}
+              {menu.open ? t("Chamar garçom") : t("Chamar garçom para abrir a mesa")}
             </button>
           </div>}
           {callSheet && (
-            <div className="call-sheet-backdrop" role="dialog" aria-modal="true" aria-label="Chamar garçom">
+            <div className="call-sheet-backdrop" role="dialog" aria-modal="true" aria-label={t("Chamar garçom")}>
               <section className="call-sheet">
                 <header>
-                  <h2 className="font-heading text-2xl">Como podemos ajudar?</h2>
-                  <button aria-label="Fechar" onClick={() => setCallSheet(false)}>
+                  <h2 className="font-heading text-2xl">{t("Como podemos ajudar?")}</h2>
+                  <button aria-label={t("Fechar")} onClick={() => setCallSheet(false)}>
                     <X />
                   </button>
                 </header>
                 <button className="call-option" disabled={busy} onClick={() => void callWaiter("garcom")}>
                   <Bell size={20} />
-                  <span><b>Chamar garçom</b><small>Alguém vem até a mesa.</small></span>
+                  <span><b>{t("Chamar garçom")}</b><small>{t("Alguém vem até a mesa.")}</small></span>
                 </button>
                 <button className="call-option" disabled={busy} onClick={() => void callWaiter("conta")}>
                   <Check size={20} />
-                  <span><b>Pedir a conta</b><small>Avisa que a mesa quer fechar. O garçom traz a conta.</small></span>
+                  <span><b>{t("Pedir a conta")}</b><small>{t("Avisa que a mesa quer fechar. O garçom traz a conta.")}</small></span>
                 </button>
                 <form
                   className="call-option call-other"
@@ -774,17 +829,17 @@ export function Menu({
                   }}
                 >
                   <label>
-                    <b>Outro</b>
+                    <b>{t("Outro")}</b>
                     <input
                       maxLength={80}
-                      placeholder="Ex.: mais guardanapos"
+                      placeholder={t("Ex.: mais guardanapos")}
                       value={callNote}
                       onChange={(e) => setCallNote(e.target.value)}
-                      aria-label="Mensagem para o garçom"
+                      aria-label={t("Mensagem para o garçom")}
                     />
                   </label>
                   <button disabled={busy || !callNote.trim()} className={primary}>
-                    Enviar
+                    {t("Enviar")}
                   </button>
                 </form>
               </section>
@@ -797,8 +852,8 @@ export function Menu({
                 onClick={() => setScreen(menu.authorized ? "cart" : "pin")}
               >
                 <span className="flex items-center gap-2">
-                  <ShoppingBag size={20} /> Ver pedido •{" "}
-                  {cart.reduce((n, l) => n + l.quantity, 0)} itens
+                  <ShoppingBag size={20} />{" "}
+                  {t("Ver pedido • {n} itens", { n: cart.reduce((n, l) => n + l.quantity, 0) })}
                 </span>
                 <span>
                   {money(total)} <ChevronRight className="inline" size={18} />
@@ -810,27 +865,29 @@ export function Menu({
       )}
       {screen !== "menu" && (
         <header className="customer-subheader flex items-center gap-4 p-5">
-          <button aria-label="Voltar ao cardápio" onClick={back}>
+          <button aria-label={t("Voltar ao cardápio")} onClick={back}>
             <ArrowLeft />
           </button>
           <span>
-            {menu.table ? `Mesa ${menu.table.label} • ` : ""}{menu.restaurant.name}
+            {menu.table ? `${t("Mesa {label}", { label: menu.table.label })} • ` : ""}{menu.restaurant.name}
           </span>
+          {menu.languages !== false && <LanguageSwitcher compact className="ml-auto" />}
         </header>
       )}
       {screen === "pin" && (
         <section className="pin-screen text-center">
           <BrandMark className="pin-brand text-primary" />
-          <h1 className="font-heading text-3xl">Digite o código da mesa</h1>
+          <h1 className="font-heading text-3xl">{needsPin ? t("Digite o código da mesa") : t("Qual é o seu nome?")}</h1>
           <p className="my-4 text-muted-foreground">
-            Peça o código de 4 dígitos ao garçom. Com o seu nome, cada pessoa
-            da mesa vê a sua parte da conta.
+            {needsPin
+              ? t("Peça o código de 4 dígitos ao garçom. Com o seu nome, cada pessoa da mesa vê a sua parte da conta.")
+              : t("Com o seu nome, cada pessoa da mesa vê a sua parte da conta.")}
           </p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
-                await post({ action: "pin", pin, name: name.trim() });
+                await post({ action: "pin", pin: needsPin ? pin : "", name: name.trim() });
                 try {
                   localStorage.setItem(NAME_STORAGE, name.trim());
                 } catch {
@@ -843,74 +900,79 @@ export function Menu({
             }}
           >
             <label className="pin-name">
-              <span>Seu nome</span>
+              <span>{t("Seu nome")}</span>
               <input
                 autoFocus={!name}
                 required
                 maxLength={40}
                 autoComplete="given-name"
-                placeholder="Como te chamam na mesa?"
+                placeholder={t("Como te chamam na mesa?")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </label>
-            <div className="pin-input-wrap"><div className="pin-boxes" aria-hidden="true">{Array.from({length:4}, (_,i) => <span className={pin.length === i ? "active" : ""} key={i}>{pin[i] || ""}</span>)}</div><input
-              aria-label="Código de 4 dígitos"
-              autoFocus={!!name}
-              inputMode="none"
-              autoComplete="one-time-code"
-              maxLength={4}
-              pattern="[0-9]{4}"
-              required
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              className="pin-native-input"
-            /></div>
-            <div className="pin-keypad">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map(
-                (digit, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    aria-label={
-                      digit === "⌫" ? "Apagar dígito" : digit || "Espaço"
-                    }
-                    disabled={!digit || busy}
-                    onClick={() =>
-                      setPin((p) =>
-                        digit === "⌫"
-                          ? p.slice(0, -1)
-                          : (p + digit).slice(0, 4),
-                      )
-                    }
-                    className="rounded-2xl bg-card py-4 text-2xl"
-                  >
-                    {digit}
-                  </button>
-                ),
-              )}
-            </div>
+            {needsPin && (
+              <>
+              <div className="pin-input-wrap"><div className="pin-boxes" aria-hidden="true">{Array.from({length:4}, (_,i) => <span className={pin.length === i ? "active" : ""} key={i}>{pin[i] || ""}</span>)}</div><input
+                aria-label={t("Código de 4 dígitos")}
+                autoFocus={!!name}
+                inputMode="none"
+                autoComplete="one-time-code"
+                maxLength={4}
+                pattern="[0-9]{4}"
+                required
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                className="pin-native-input"
+              /></div>
+              <div className="pin-keypad">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map(
+                  (digit, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      aria-label={
+                        digit === "⌫" ? t("Apagar dígito") : digit || t("Espaço")
+                      }
+                      disabled={!digit || busy}
+                      onClick={() =>
+                        setPin((p) =>
+                          digit === "⌫"
+                            ? p.slice(0, -1)
+                            : (p + digit).slice(0, 4),
+                        )
+                      }
+                      className="rounded-2xl bg-card py-4 text-2xl"
+                    >
+                      {digit}
+                    </button>
+                  ),
+                )}
+              </div>
+              </>
+            )}
             <button
-              disabled={busy || pin.length !== 4 || !name.trim()}
-              className={`${primary} pin-submit mt-6 w-full ${pin.length < 4 ? "invisible" : ""}`}
+              disabled={busy || (needsPin && pin.length !== 4) || !name.trim()}
+              className={`${primary} pin-submit mt-6 w-full ${needsPin && pin.length < 4 ? "invisible" : ""}`}
             >
-              {busy ? "Conferindo…" : "Confirmar código"}
+              {busy ? t("Conferindo…") : needsPin ? t("Confirmar código") : t("Entrar na mesa")}
             </button>
           </form>
         </section>
       )}
       {screen === "cart" && (
         <section className="p-5">
-          <h1 className="mb-6 font-heading text-3xl">Seu pedido</h1>
-          {cart.length === 0 && <p>Seu carrinho está vazio.</p>}
+          <h1 className="mb-6 font-heading text-3xl">{t("Seu pedido")}</h1>
+          {cart.length === 0 && <p>{t("Seu carrinho está vazio.")}</p>}
           <div className="space-y-3">
             {cart.map((line) => {
               const item = itemFor(line);
               return (
                 <article key={line.key} className="rounded-[20px] bg-card p-5">
                   <h2 className="font-heading text-xl">
-                    {line.quantity}× {item?.name || "Item indisponível"}
+                    {line.quantity}× {item?.name || t("Item indisponível")}
                   </h2>
+                  {item && blockedWhy(item) && <p className="item-unavailable-note">{blockedWhy(item)}</p>}
                   <p className="text-sm text-muted-foreground">
                     {item?.modifier_groups
                       .flatMap((g) => g.modifiers)
@@ -933,9 +995,9 @@ export function Menu({
                       className="h-5 w-5 accent-primary"
                     />
                     <span>
-                      Dividir com a mesa
+                      {t("Dividir com a mesa")}
                       <small>
-                        O valor é dividido entre todos que já estão na comanda.
+                        {t("O valor é dividido entre todos que já estão na comanda.")}
                       </small>
                     </span>
                   </label>
@@ -945,7 +1007,7 @@ export function Menu({
                         ? money(
                             unitPrice(item, line.modifier_ids) * line.quantity,
                           )
-                        : "Esgotado"}
+                        : t("Esgotado")}
                     </b>
                     <div className="flex gap-4">
                       {item && (
@@ -953,7 +1015,7 @@ export function Menu({
                           className="underline"
                           onClick={() => openItem(item, line)}
                         >
-                          Editar
+                          {t("Editar")}
                         </button>
                       )}
                       <button
@@ -963,7 +1025,7 @@ export function Menu({
                           pendingRequest.current = null;
                         }}
                       >
-                        Remover
+                        {t("Remover")}
                       </button>
                     </div>
                   </div>
@@ -972,16 +1034,24 @@ export function Menu({
             })}
           </div>
           <div className="my-6 flex justify-between text-xl">
-            <span>Total</span>
+            <span>{t("Total")}</span>
             <b>{money(total)}</b>
           </div>
+          {orderingStopped && (
+            <p className="item-unavailable-note mb-4" role="status">
+              {menu.paused
+                ? menu.paused.reason || t("Pedidos pausados no momento")
+                : t("Novos pedidos desta mesa estão bloqueados")}
+            </p>
+          )}
           <button
             className={`${primary} w-full`}
             disabled={
               busy ||
               !cart.length ||
-              cart.some((l) => !itemFor(l)) ||
-              !menu.open
+              cart.some((l) => { const item = itemFor(l); return !item || !!blockedWhy(item); }) ||
+              !menu.open ||
+              orderingStopped
             }
             onClick={() =>
               void run(async () => {
@@ -1007,10 +1077,10 @@ export function Menu({
               })
             }
           >
-            {busy ? "Enviando…" : "Enviar pedido"}
+            {busy ? t("Enviando…") : t("Enviar pedido")}
           </button>
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            Confira os itens e as observações antes de enviar.
+            {t("Confira os itens e as observações antes de enviar.")}
           </p>
         </section>
       )}
@@ -1019,68 +1089,64 @@ export function Menu({
           <div className="mx-auto my-12 flex h-24 w-24 animate-in zoom-in items-center justify-center rounded-full bg-success text-white">
             <Check size={48} />
           </div>
-          <h1 className="font-heading text-4xl">Pedido enviado!</h1>
+          <h1 className="font-heading text-4xl">{t("Pedido enviado!")}</h1>
           <p className="my-5 text-muted-foreground">
-            A cozinha já recebeu seu pedido.
+            {t("A cozinha já recebeu seu pedido.")}
             <br />
-            Previsão: cerca de {estimate} minutos.
+            {t("Previsão: cerca de {n} minutos.", { n: estimate })}
           </p>
           <button
             className={`${primary} w-full`}
             onClick={() => setScreen("tab")}
           >
-            Acompanhar minha comanda
+            {t("Acompanhar minha comanda")}
           </button>
           <button className="mt-6 underline" onClick={back}>
-            Pedir mais
+            {t("Pedir mais")}
           </button>
         </section>
       )}
       {screen === "tab" && (
-        <section className="customer-tab p-5">
-          <h1 className="font-heading text-3xl">Comanda da mesa</h1><p className="tab-subtitle">Cada pessoa vê o que pediu e a sua parte da conta.</p>
+        <section className="customer-tab p-5" data-tagline={t("Boa comida, bons momentos.")}>
+          <h1 className="font-heading text-3xl">{t("Comanda da mesa")}</h1><p className="tab-subtitle">{t("Cada pessoa vê o que pediu e a sua parte da conta.")}</p>
           <div className="space-y-8">
             {people.map((person) => (
             <div key={person.id ?? "sem-nome"} className="tab-person">
               <header className="tab-person-header">
                 <div>
-                  <h2>{person.id === me ? `Você • ${person.name}` : person.name}</h2>
+                  <h2>{person.id === me ? t("Você • {name}", { name: person.name }) : person.id === null ? t(person.name) : person.name}</h2>
                   {person.shared_cents > 0 && (
-                    <small>Inclui {money(person.shared_cents)} de itens divididos</small>
+                    <small>{t("Inclui {value} de itens divididos", { value: money(person.shared_cents) })}</small>
                   )}
                 </div>
                 <div>
                   <b>{money(person.due_cents)}</b>
                   {person.settled ? (
-                    <span className="tab-person-status paid">Pago</span>
+                    <span className="tab-person-status paid">{t("Pago")}</span>
                   ) : person.paid_cents !== null ? (
-                    <span className="tab-person-status due">Falta {money(person.balance_cents)}</span>
+                    <span className="tab-person-status due">{t("Falta {value}", { value: money(person.balance_cents) })}</span>
                   ) : null}
                 </div>
               </header>
               {!ordersOf(person.id).length && (
-                <p className="text-sm text-muted-foreground">Ainda não pediu nada.</p>
+                <p className="text-sm text-muted-foreground">{t("Ainda não pediu nada.")}</p>
               )}
               <div className="space-y-4">
             {groupOrders(ordersOf(person.id)).map((group) => {
               const activeOrders = group.orders.filter((o) => o.status !== "cancelado");
-              const STATUS_PT: Record<string, string> = { recebido: "Recebido", em_preparo: "Em preparo", pronto: "Pronto", entregue: "Entregue", cancelado: "Cancelado" };
+              const STATUS_PT: Record<string, string> = { recebido: t("Recebido"), em_preparo: t("Em preparo"), pronto: t("Pronto"), entregue: t("Entregue"), cancelado: t("Cancelado") };
               const mine = group.orders.every((o) => o.guest_id === me);
               const canCancelAll = mine && activeOrders.length > 0 && activeOrders.every((o) => o.status === "recebido");
               return (
-              <article key={group.key} className="customer-order rounded-[20px] bg-card p-5"><header><h2>{group.status === "entregue" ? "Pedido anterior" : group.status === "cancelado" ? "Pedido cancelado" : "Pedido em andamento"}</h2><small>#{group.key.slice(0,5).toUpperCase()}</small></header>
+              <article key={group.key} className="customer-order rounded-[20px] bg-card p-5"><header><h2>{group.status === "entregue" ? t("Pedido anterior") : group.status === "cancelado" ? t("Pedido cancelado") : t("Pedido em andamento")}</h2><small>#{group.key.slice(0,5).toUpperCase()}</small></header>
                 <div className="mb-4 flex justify-between">
                   <span className="text-sm text-muted-foreground">
-                    {new Date(group.created_at).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      timeZone: "America/Sao_Paulo",
-                    })}
+                    {formatTime(locale, group.created_at)}
                   </span>
                   <b>{money(group.total_cents)}</b>
                 </div>
                 {group.status === "cancelado" ? (
-                  <p className="text-destructive">Cancelado</p>
+                  <p className="text-destructive">{t("Cancelado")}</p>
                 ) : (
                   <ol className="order-timeline">
                     {["recebido", "em_preparo", "pronto", "entregue"].map(
@@ -1094,42 +1160,42 @@ export function Menu({
                           }
                         >
                           <span className={`timeline-icon ${all.indexOf(group.status) >= index ? "complete" : ""}`}>{index === 0 ? <Check/> : index === 1 ? <ChefHat/> : index === 2 ? <Bell/> : <ShoppingBag/>}</span>
-                          {
-                            ["Recebido", "Em preparo", "Pronto", "Entregue"][
-                              index
-                            ]
-                          }
+                          {STATUS_PT[status]}
                         </li>
                       ),
                     )}
                   </ol>
                 )}
                 {activeOrders.length > 1 && (
-                  <p className="station-status" aria-label="Status por setor">
+                  <p className="station-status" aria-label={t("Status por setor")}>
                     {activeOrders.map((o) => (
-                      <span key={o.id}><b>{STATION_LABELS[o.station ?? "cozinha"]}:</b> {STATUS_PT[o.status]}</span>
+                      <span key={o.id}><b>{t(STATION_LABELS[o.station ?? "cozinha"])}:</b> {STATUS_PT[o.status]}</span>
                     ))}
                   </p>
                 )}
-                {group.items.map((i) => (
-                  <div key={i.id} className={`tab-order-item ${i.cancelled_at ? "tab-order-item-cancelled" : ""}`}>{menu.items.find(item => item.name === i.name_snapshot)?.photo_url && <div className="tab-item-photo"><MenuPhoto slug={slug} src={menu.items.find(item => item.name === i.name_snapshot)!.photo_url!} alt={i.name_snapshot} width={85} height={75}/></div>}<div><p className="tab-item-title">
-                      {i.quantity}× {i.name_snapshot}
+                {group.items.map((i) => {
+                  // O pedido guarda o nome em português; o cardápio dá a foto e o nome no idioma.
+                  const source = menu.items.find((item) => item.id === i.menu_item_id) ?? rawMenu?.items.find((item) => item.name === i.name_snapshot);
+                  const shown = (source && menu.items.find((item) => item.id === source.id)?.name) || i.name_snapshot;
+                  return (
+                  <div key={i.id} className={`tab-order-item ${i.cancelled_at ? "tab-order-item-cancelled" : ""}`}>{source?.photo_url && <div className="tab-item-photo"><MenuPhoto slug={slug} src={source.photo_url} alt={shown} width={85} height={75}/></div>}<div><p className="tab-item-title">
+                      {i.quantity}× {shown}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {i.cancelled_at
-                        ? "Cancelado"
+                        ? t("Cancelado")
                         : [
                             i.modifiers_snapshot.map((m) => m.name).join(" • "),
                             i.note,
-                            i.shared ? "Dividido com a mesa" : "",
-                            activeOrders.length > 1 && i.station ? STATION_LABELS[i.station] : "",
+                            i.shared ? t("Dividido com a mesa") : "",
+                            activeOrders.length > 1 && i.station ? t(STATION_LABELS[i.station]) : "",
                           ].filter(Boolean).join(" • ")}
                     </p>
                     {!i.cancelled_at && mine && group.orders.find((o) => o.id === i.order_id)?.status === "recebido" && group.items.filter((x) => !x.cancelled_at).length > 1 && (
                       <button
                         disabled={busy}
                         className="mt-1 text-xs text-destructive underline"
-                        aria-label={`Cancelar item ${i.name_snapshot}`}
+                        aria-label={t("Cancelar item {name}", { name: shown })}
                         onClick={() =>
                           void run(async () => {
                             await post({ action: "cancel_item", item_id: i.id });
@@ -1150,14 +1216,15 @@ export function Menu({
                           })
                         }
                       >
-                        Cancelar item
+                        {t("Cancelar item")}
                       </button>
                     )}</div><b>{money(i.unit_price_cents * i.quantity)}</b>
                   </div>
-                ))}
+                  );
+                })}
                 {["recebido", "em_preparo"].includes(group.status) && (
                   <p className="tab-estimate"><Clock size={19}/>
-                    Previsão: cerca de {group.prep_minutes} min
+                    {t("Previsão: cerca de {n} min", { n: group.prep_minutes })}
                   </p>
                 )}
                 {canCancelAll && (
@@ -1175,7 +1242,7 @@ export function Menu({
                       })
                     }
                   >
-                    Cancelar pedido
+                    {t("Cancelar pedido")}
                   </button>
                 )}
               </article>
@@ -1185,21 +1252,21 @@ export function Menu({
             </div>
             ))}
           </div>
-          <p className="tab-updated" role="status" aria-label="Atualização da comanda" aria-live="polite">
+          <p className="tab-updated" role="status" aria-label={t("Atualização da comanda")} aria-live="polite">
             {offline
-              ? "Sem conexão. Tentando atualizar sua comanda…"
+              ? t("Sem conexão. Tentando atualizar sua comanda…")
               : updatedAt === null
-                ? "Atualizando…"
+                ? t("Atualizando…")
                 : now - updatedAt < 6_000
-                  ? "Atualizado agora"
-                  : `Atualizado há ${Math.round((now - updatedAt) / 1000)} s`}
+                  ? t("Atualizado agora")
+                  : t("Atualizado há {n} s", { n: Math.round((now - updatedAt) / 1000) })}
           </p>
-          <div className="tab-total-bar"><div><span>Sua parte</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>
-            Total da mesa: {money(totals?.due_cents ?? split.total_cents)}
-            {totals && totals.fee_cents > 0 && ` • inclui ${totals.fee_percent}% de serviço`}
-            {totals && totals.discount_cents > 0 && ` • desconto de ${money(totals.discount_cents)}`}
-            {totals && totals.paid_cents > 0 && ` • pago ${money(totals.paid_cents)}`}
-          </small></div><button onClick={back}><Plus size={17}/> Pedir mais</button></div>
+          <div className="tab-total-bar"><div><span>{t("Sua parte")}</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>
+            {t("Total da mesa: {value}", { value: money(totals?.due_cents ?? split.total_cents) })}
+            {totals && totals.fee_cents > 0 && ` • ${t("inclui {n}% de serviço", { n: totals.fee_percent })}`}
+            {totals && totals.discount_cents > 0 && ` • ${t("desconto de {value}", { value: money(totals.discount_cents) })}`}
+            {totals && totals.paid_cents > 0 && ` • ${t("pago {value}", { value: money(totals.paid_cents) })}`}
+          </small></div><button onClick={back}><Plus size={17}/> {t("Pedir mais")}</button></div>
         </section>
       )}
       {selected && (
@@ -1221,7 +1288,7 @@ export function Menu({
                 />
               )}
               <button
-                aria-label="Fechar detalhe"
+                aria-label={t("Fechar detalhe")}
                 className="absolute left-5 top-5 rounded-full bg-card p-3"
                 onClick={() => setSelected(null)}
               >
@@ -1238,8 +1305,11 @@ export function Menu({
               </b>
               {selected.stock_left != null && selected.stock_left <= 5 && (
                 <span className="stock-left-badge">
-                  {selected.stock_left === 1 ? "Última unidade" : `Últimas ${selected.stock_left} unidades`}
+                  {selected.stock_left === 1 ? t("Última unidade") : t("Últimas {n} unidades", { n: selected.stock_left })}
                 </span>
+              )}
+              {blockedWhy(selected) && (
+                <p className="item-unavailable-note mt-3" role="status">{blockedWhy(selected)}</p>
               )}
               {selected.modifier_groups
                 .toSorted((a, b) => a.position - b.position)
@@ -1248,7 +1318,7 @@ export function Menu({
                     <legend className="mb-3 w-full font-semibold">
                       {g.name}{" "}
                       <span className="float-right rounded-full bg-secondary px-3 py-1 text-xs">
-                        {g.required ? "Obrigatório" : `Até ${g.max_select}`}
+                        {g.required ? t("Obrigatório") : t("Até {n}", { n: g.max_select })}
                       </span>
                     </legend>
                     {g.modifiers
@@ -1294,25 +1364,25 @@ export function Menu({
                   </fieldset>
                 ))}
               <label className="mt-7 block font-semibold">
-                Alguma observação?
+                {t("Alguma observação?")}
                 <textarea
                   maxLength={200}
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="Ex.: sem cebola"
+                  placeholder={t("Ex.: sem cebola")}
                   className="mt-3 w-full rounded-2xl border bg-background p-4 font-normal"
                 />
               </label>
               {error && (
                 <p role="alert" className="text-destructive">
-                  {error}
+                  {t(error)}
                 </p>
               )}
             </section>
             <div className="item-detail-actions fixed inset-x-0 bottom-0 mx-auto flex max-w-xl gap-4 border-t bg-card p-4">
               <div className="flex items-center gap-4">
                 <button
-                  aria-label="Diminuir quantidade"
+                  aria-label={t("Diminuir quantidade")}
                   disabled={quantity <= 1}
                   onClick={() => setQuantity((q) => q - 1)}
                 >
@@ -1320,7 +1390,7 @@ export function Menu({
                 </button>
                 <b>{quantity}</b>
                 <button
-                  aria-label="Aumentar quantidade"
+                  aria-label={t("Aumentar quantidade")}
                   disabled={quantity >= Math.min(99, selected.stock_left ?? 99)}
                   onClick={() => setQuantity((q) => q + 1)}
                 >
@@ -1329,14 +1399,18 @@ export function Menu({
               </div>
               <button
                 className={`${primary} flex-1`}
-                disabled={!menu.open}
+                disabled={!menu.open || !!blockedWhy(selected) || orderingStopped}
                 onClick={add}
               >
-                {menu.open
-                  ? `${editing ? "Salvar" : "Adicionar"} • ${money(unitPrice(selected, modifiers) * quantity)}`
-                  : consult
-                    ? "Peça pelo QR da sua mesa"
-                    : "Chame o garçom"}
+                {!menu.open
+                  ? consult
+                    ? t("Peça pelo QR da sua mesa")
+                    : t("Chame o garçom")
+                  : blockedWhy(selected)
+                    ? t("Indisponível agora")
+                    : orderingStopped
+                      ? t("Pedidos pausados")
+                      : `${editing ? t("Salvar") : t("Adicionar")} • ${money(unitPrice(selected, modifiers) * quantity)}`}
               </button>
             </div>
           </div>

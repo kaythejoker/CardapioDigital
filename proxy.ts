@@ -70,7 +70,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL(path + request.nextUrl.search, process.env.NEXT_PUBLIC_ADMIN_URL!));
   }
   if (mode === "customer" && /^\/api\/(auth|manage|staff|team|revenda|upload|qr|history|reports|domains)(\/|$)/.test(path)) return new NextResponse(null, {status:404});
-  if (mode === "admin" && /^\/[^/]+\/(m\/[^/]+|consulta)$/.test(path)) return NextResponse.redirect(new URL(path + request.nextUrl.search, process.env.NEXT_PUBLIC_MENU_URL!));
+  if (mode === "admin" && /^\/[^/]+\/(m\/[^/]+|consulta|espera\/[^/]+)$/.test(path)) return NextResponse.redirect(new URL(path + request.nextUrl.search, process.env.NEXT_PUBLIC_MENU_URL!));
   if (!path.startsWith("/app")) return NextResponse.next();
   let response = NextResponse.next({ request });
   const env = publicEnv();
@@ -105,5 +105,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/app/:path*", "/api/:path*", "/m/:qrToken", "/:slug", "/:slug/m/:qrToken", "/:slug/consulta"],
+  matcher: ["/", "/app/:path*", "/api/:path*", "/m/:qrToken", "/:slug", "/:slug/m/:qrToken", "/:slug/consulta", "/:slug/espera/:token"],
 };

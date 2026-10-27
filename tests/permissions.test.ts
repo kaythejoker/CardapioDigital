@@ -19,13 +19,19 @@ test("garçom tem só o padrão do salão", () => {
       .filter(([, v]) => v)
       .map(([k]) => k)
       .toSorted(),
-    ["cancel_items", "close_tab", "merge_tables", "register_payment"],
+    ["block_orders", "cancel_items", "close_tab", "merge_tables", "register_payment"],
   );
   assert.equal(defaultPermission(["waiter"], "apply_discount"), false);
 });
 
-test("cozinha e bar não têm nada por padrão; ajuste por pessoa liga e desliga", () => {
+test("cozinha e bar só pausam pedidos por padrão; ajuste por pessoa liga e desliga", () => {
   assert.equal(effectivePermissions(["kitchen"], undefined).cancel_items, false);
+  assert.equal(effectivePermissions(["kitchen"], undefined).block_orders, true);
+  assert.equal(effectivePermissions(["bar"], { block_orders: false }).block_orders, false);
+  assert.equal(
+    Object.values(effectivePermissions(["bar"], null)).filter(Boolean).length,
+    1,
+  );
   assert.equal(effectivePermissions(["bar"], { edit_menu: true }).edit_menu, true);
   assert.equal(effectivePermissions(["waiter"], { close_tab: false }).close_tab, false);
   assert.equal(effectivePermissions(["waiter", "kitchen"], {}).close_tab, true);

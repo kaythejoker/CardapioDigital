@@ -18,9 +18,40 @@ export const imageUrl = z
     z.null(),
   ])
   .transform((v) => v || null);
+// Traduções do cardápio: en/es, só os campos do tipo; campo vazio não é salvo.
+const translated = <F extends string>(fields: readonly [F, ...F[]]) =>
+  z
+    .partialRecord(
+      z.enum(["en", "es"]),
+      z.partialRecord(z.enum(fields), z.string().trim().max(1000)),
+    )
+    .default({})
+    .transform((t) =>
+      Object.fromEntries(
+        Object.entries(t)
+          .map(([lang, v]) => [lang, Object.fromEntries(Object.entries(v ?? {}).filter(([, s]) => s))] as const)
+          .filter(([, v]) => Object.keys(v).length),
+      ),
+    );
+export const nameTranslations = translated(["name"]);
+// Janela de horário: "HH:MM" nas duas pontas ou nenhuma.
+const hhmm = z
+  .union([z.literal(""), z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), z.null()])
+  .transform((v) => v || null);
+export const blockFields = {
+  blocked: z.boolean().default(false),
+  blocked_reason: z.string().trim().max(120).nullable().default(null),
+  available_from: hhmm.default(null),
+  available_until: hhmm.default(null),
+};
+export const HOURS_MESSAGE = "Informe início e fim diferentes para o horário";
+export const hoursOk = (v: { available_from: string | null; available_until: string | null }) =>
+  (v.available_from === null) === (v.available_until === null) &&
+  (v.available_from === null || v.available_from !== v.available_until);
 export const groupSchema = z
   .object({
     name: text,
+    translations: nameTranslations,
     required: z.boolean(),
     min_select: z.number().int().min(0).max(50),
     max_select: z.number().int().min(1).max(50),
@@ -31,6 +62,7 @@ export const groupSchema = z
           name: text,
           price_cents: z.number().int().min(0).max(1_000_000),
           position: z.number().int().min(0),
+          translations: nameTranslations,
         }),
       )
       .min(1)
@@ -58,11 +90,13 @@ export const itemSchema = z.object({
   low_stock_threshold: z.number().int().min(0).max(100_000).default(5),
   // null = herda o setor da categoria.
   station: z.enum(["cozinha", "bar"]).nullable().default(null),
+  translations: translated(["name", "description"]),
+  ...blockFields,
   groups: z.array(groupSchema).max(20),
 }).refine(
   (i) => !i.stock_enabled || i.stock_quantity !== null,
   "Informe a quantidade em estoque",
-);
+).refine(hoursOk, HOURS_MESSAGE);
 export const stationSchema = z.enum(["cozinha", "bar"]);
 export const stockSchema = z.object({
   item_id: z.uuid(),
@@ -88,6 +122,7 @@ export const financeSettingsSchema = z.object({
   service_fee_percent: z.number().min(0).max(20),
   service_fee_optional: z.boolean(),
 });
+export const pinSettingsSchema = z.object({ pin_required: z.boolean() });
 export const surveySettingsSchema = z.object({
   survey_enabled: z.boolean(),
   google_review_url: z
@@ -126,3 +161,16 @@ export const memberSchema = z.object({
   permissions: permissionsSchema,
   active: z.boolean(),
 });
+// Lista de espera (spec-fase3.md, seção 1).
+export const waitlistSchema = z.object({
+  name: z.string().trim().min(1, "Informe o nome").max(60),
+  party_size: z.number().int().min(1).max(50),
+  phone: z
+    .string()
+    .trim()
+    .max(20)
+    .regex(/^[\d\s()+-]*$/, "Telefone inválido")
+    .optional(),
+  note: z.string().trim().max(120).optional(),
+});
+export const blockReason = z.string().trim().max(120).optional();

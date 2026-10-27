@@ -4,13 +4,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { menuOrigin } from "@/lib/menu-origin";
 import { domainsConfigured } from "@/lib/vercel-domains";
 import {
+  blockFields,
+  blockReason,
   financeSettingsSchema,
+  HOURS_MESSAGE,
+  hoursOk,
   itemSchema,
+  nameTranslations,
   memberSchema,
   restaurantSchema,
   settingsSchema,
   stationSchema,
   stockSchema,
+  pinSettingsSchema,
   surveySettingsSchema,
 } from "@/lib/manage-schema";
 
@@ -181,15 +187,21 @@ async function loadFinance(db: Awaited<ReturnType<typeof managerAccess>> extends
   };
 }
 
-const commands = z.discriminatedUnion("action", [
-  z.object({
+const categoryCommand = z
+  .object({
     action: z.literal("category"),
     id: z.uuid().optional(),
     name: z.string().trim().min(1).max(100),
     active: z.boolean(),
     position: z.number().int().min(0),
     station: stationSchema.default("cozinha"),
-  }),
+    translations: nameTranslations,
+    ...blockFields,
+  })
+  .refine(hoursOk, HOURS_MESSAGE);
+const commands = z.discriminatedUnion("action", [
+  categoryCommand,
+  z.object({ action: z.literal("pause_orders"), paused: z.boolean(), reason: blockReason }),
   z.object({
     action: z.literal("item"),
     id: z.uuid().optional(),
@@ -218,6 +230,7 @@ const commands = z.discriminatedUnion("action", [
   z.object({ action: z.literal("stock"), data: stockSchema }),
   z.object({ action: z.literal("finance_settings"), data: financeSettingsSchema }),
   z.object({ action: z.literal("survey_settings"), data: surveySettingsSchema }),
+  z.object({ action: z.literal("pin_settings"), data: pinSettingsSchema }),
   z.object({
     action: z.literal("close_day"),
     day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -258,7 +271,9 @@ export async function POST(
         ? "finance"
         : cmd.action === "survey_settings"
           ? "surveys"
-          : null;
+          : cmd.action === "pause_orders"
+            ? "order_blocks"
+            : null;
   if (feature && !ctx.access.features[feature])
     return Response.json({ error: "Função não incluída no seu plano" }, { status: 403 });
   // Quem não é gestor só chega aqui com permissão de gestão; cardápio exige
@@ -269,7 +284,9 @@ export async function POST(
       ? ctx.can.manage_stock
       : cmd.action === "close_day"
         ? ctx.can.view_finance
-        : ctx.isManager || ctx.isReseller;
+        : cmd.action === "pause_orders"
+          ? ctx.can.block_orders
+          : ctx.isManager || ctx.isReseller;
   if (!allowed)
     return Response.json(
       { error: "Você não tem permissão para esta ação" },
@@ -282,6 +299,11 @@ export async function POST(
       active: cmd.active,
       position: cmd.position,
       station: cmd.station,
+      translations: cmd.translations,
+      blocked: cmd.blocked,
+      blocked_reason: cmd.blocked ? cmd.blocked_reason : null,
+      available_from: cmd.available_from,
+      available_until: cmd.available_until,
     };
     result = cmd.id
       ? await ctx.db
@@ -357,13 +379,19 @@ export async function POST(
       .eq("id", id.data)
       .select("id")
       .single();
-  else if (cmd.action === "finance_settings" || cmd.action === "survey_settings")
+  else if (cmd.action === "finance_settings" || cmd.action === "survey_settings" || cmd.action === "pin_settings")
     result = await ctx.db
       .from("restaurants")
       .update(cmd.data)
       .eq("id", id.data)
       .select("id")
       .single();
+  else if (cmd.action === "pause_orders")
+    result = await ctx.db.rpc("set_orders_paused", {
+      p_restaurant: id.data,
+      p_paused: cmd.paused,
+      p_reason: cmd.reason || null,
+    });
   else if (cmd.action === "close_day") {
     const day = cmd.day ?? saoPauloDayStart().slice(0, 10);
     const rpc = await ctx.db.rpc("close_day", { p_restaurant: id.data, p_day: day, p_note: cmd.note || null });

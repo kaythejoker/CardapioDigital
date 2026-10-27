@@ -6,6 +6,8 @@ export default defineConfig({
   expect: { timeout: 12_000 },
   use: {
     baseURL: process.env.QA_BASE_URL || "http://localhost:3000",
+    // A interface segue o idioma do navegador; os testes procuram textos em português.
+    locale: "pt-BR",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

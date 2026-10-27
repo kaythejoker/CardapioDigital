@@ -1,8 +1,12 @@
+import { type Availability } from "@/lib/availability";
+import { localized, msg, type Locale, type Translations } from "@/lib/i18n";
+
 export type Modifier = {
   id: string;
   name: string;
   price_cents: number;
   position: number;
+  translations?: Translations;
 };
 export type ModifierGroup = {
   id: string;
@@ -11,9 +15,10 @@ export type ModifierGroup = {
   min_select: number;
   max_select: number;
   position: number;
+  translations?: Translations;
   modifiers: Modifier[];
 };
-export type MenuItem = {
+export type MenuItem = Availability & {
   id: string;
   category_id: string;
   name: string;
@@ -24,7 +29,13 @@ export type MenuItem = {
   featured: boolean;
   /** Unidades restantes quando o item controla estoque; null quando não controla. */
   stock_left?: number | null;
+  translations?: Translations;
   modifier_groups: ModifierGroup[];
+};
+export type MenuCategory = Availability & {
+  id: string;
+  name: string;
+  translations?: Translations;
 };
 export type MenuData = {
   restaurant: {
@@ -44,7 +55,7 @@ export type MenuData = {
   consult?: boolean;
   /** Melhor endereço desta mesa (domínio próprio, da revenda ou padrão). */
   menu_url?: string;
-  categories: { id: string; name: string }[];
+  categories: MenuCategory[];
   items: MenuItem[];
   open: boolean;
   authorized: boolean;
@@ -53,6 +64,14 @@ export type MenuData = {
   survey?: { guest_name: string; tab_id: string } | null;
   /** Assinatura do restaurante suspensa: só o aviso aparece. */
   suspended?: boolean;
+  /** Módulo de idiomas: sem ele, o cardápio fica só em português. */
+  languages?: boolean;
+  /** Pedidos pausados pelo restaurante (módulo de bloqueios). */
+  paused?: { reason: string | null } | null;
+  /** Esta comanda está bloqueada para novos pedidos. */
+  tab_blocked?: boolean;
+  /** O restaurante pede o PIN da mesa; sem ele, o cliente só informa o nome. */
+  pin_required?: boolean;
 };
 export const SURVEY_TAGS = [
   "Rápido",
@@ -72,9 +91,9 @@ export type ServiceCall = {
   mine: boolean;
 };
 export const CALL_LABELS: Record<ServiceCallKind, string> = {
-  garcom: "Chamar garçom",
-  conta: "Pedir a conta",
-  ajuda: "Outro",
+  garcom: msg("Chamar garçom"),
+  conta: msg("Pedir a conta"),
+  ajuda: msg("Outro"),
 };
 export type CartLine = {
   key: string;
@@ -87,8 +106,8 @@ export type CartLine = {
 };
 export type Station = "cozinha" | "bar";
 export const STATION_LABELS: Record<Station, string> = {
-  cozinha: "Cozinha",
-  bar: "Bar",
+  cozinha: msg("Cozinha"),
+  bar: msg("Bar"),
 };
 export type CustomerOrder = {
   id: string;
@@ -102,6 +121,7 @@ export type CustomerOrder = {
   batch_id?: string | null;
   order_items: {
     id: string;
+    menu_item_id?: string | null;
     name_snapshot: string;
     unit_price_cents: number;
     quantity: number;
@@ -155,11 +175,11 @@ export function groupOrders<T extends CustomerOrder>(orders: T[]): OrderGroup<T>
 
 export type PaymentMethod = "pix" | "dinheiro" | "debito" | "credito" | "outro";
 export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
-  pix: "Pix",
-  dinheiro: "Dinheiro",
-  debito: "Débito",
-  credito: "Crédito",
-  outro: "Outro",
+  pix: msg("Pix"),
+  dinheiro: msg("Dinheiro"),
+  debito: msg("Débito"),
+  credito: msg("Crédito"),
+  outro: msg("Outro"),
 };
 /** Totais da comanda calculados pelo banco (public.tab_totals). */
 export type TabTotals = {
@@ -176,10 +196,10 @@ export type TabTotals = {
 
 /** Motivos de cancelamento oferecidos ao garçom e ao gestor. */
 export const CANCEL_REASONS = [
-  "Cliente desistiu",
-  "Saiu errado",
-  "Item acabou",
-  "Outro",
+  msg("Cliente desistiu"),
+  msg("Saiu errado"),
+  msg("Item acabou"),
+  msg("Outro"),
 ] as const;
 export const money = (cents: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -193,4 +213,27 @@ export function brandForeground(hex: string) {
   return (luminance + 0.05) / 0.05 > 1.05 / (luminance + 0.05)
     ? "#1E1A16"
     : "#FFFFFF";
+}
+
+/**
+ * Cardápio no idioma do cliente: troca nome e descrição pelos traduzidos (vazio
+ * cai no português). O pedido continua indo pelos ids; a cozinha recebe o nome
+ * em português.
+ */
+export function localizeMenu(menu: MenuData, locale: Locale): MenuData {
+  if (locale === "pt") return menu;
+  return {
+    ...menu,
+    categories: menu.categories.map((c) => ({ ...c, name: localized(locale, c.name, c.translations) })),
+    items: menu.items.map((i) => ({
+      ...i,
+      name: localized(locale, i.name, i.translations),
+      description: localized(locale, i.description, i.translations, "description"),
+      modifier_groups: i.modifier_groups.map((g) => ({
+        ...g,
+        name: localized(locale, g.name, g.translations),
+        modifiers: g.modifiers.map((m) => ({ ...m, name: localized(locale, m.name, m.translations) })),
+      })),
+    })),
+  };
 }

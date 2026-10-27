@@ -1,9 +1,9 @@
 import { randomInt } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { readAll } from "@/lib/manage-access";
+import { readAll, saoPauloDayStart } from "@/lib/manage-access";
 import { effectivePermissions } from "@/lib/permissions";
-import { paymentMethod } from "@/lib/manage-schema";
+import { blockReason, paymentMethod, waitlistSchema } from "@/lib/manage-schema";
 
 const roles = z.enum(["garcom", "cozinha", "bar", "gestor"]);
 const PANEL_ROLES: Record<z.infer<typeof roles>, string[]> = {
@@ -21,7 +21,7 @@ async function access(role: z.infer<typeof roles>, restaurantId: string | null) 
   const { data: memberships } = await db
     .from("restaurant_members")
     .select(
-      "restaurant_id,roles,permissions,restaurants(id,name,slug,primary_color,service_fee_percent,service_fee_optional,resellers(brand_name,primary_color,logo_url,support_whatsapp,support_email,support_hours))",
+      "restaurant_id,roles,permissions,restaurants(id,name,slug,primary_color,service_fee_percent,service_fee_optional,orders_paused,orders_paused_reason,resellers(brand_name,primary_color,logo_url,support_whatsapp,support_email,support_hours))",
     )
     .eq("user_id", user.id)
     .eq("active", true)
@@ -70,7 +70,7 @@ export async function GET(
       .order("label"),
     ctx.db
       .from("tabs")
-      .select("id,table_id,pin,opened_at,status,service_fee_percent,service_fee_waived,discount_cents,discount_reason")
+      .select("id,table_id,pin,opened_at,status,service_fee_percent,service_fee_waived,discount_cents,discount_reason,orders_blocked,orders_blocked_reason")
       .eq("restaurant_id", id)
       .eq("status", "open"),
     readAll((start, end) =>
@@ -119,6 +119,15 @@ export async function GET(
       .eq("restaurant_id", id)
       .is("released_at", null)
       .order("added_at"),
+    // Lista de espera de hoje, para o salão (spec-fase3.md, seção 1).
+    role.data === "garcom" && accessInfo.data?.features?.waitlist !== false
+      ? ctx.db
+          .from("waitlist_entries")
+          .select("id,number,name,party_size,phone,note,status,public_token,table_id,created_at,called_at,seated_at,left_at")
+          .eq("restaurant_id", id)
+          .gte("created_at", saoPauloDayStart())
+          .order("number")
+      : Promise.resolve({ data: [], error: null }),
   ]);
   const openTabIds = results[1].data?.map((t) => t.id) ?? [];
   const [guests, payments] = openTabIds.length
@@ -160,6 +169,7 @@ export async function GET(
       categories: results[5].data,
       calls: results[6].data,
       tab_tables: results[7].data,
+      waitlist: results[8].data,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
@@ -211,7 +221,18 @@ const commands = z.discriminatedUnion("action", [
     reason: z.string().trim().max(200),
   }),
   z.object({ action: z.literal("fee"), tab_id: z.uuid(), waived: z.boolean() }),
+  // Fase 3: bloqueios e lista de espera.
+  z.object({ action: z.literal("pause_orders"), paused: z.boolean(), reason: blockReason }),
+  z.object({ action: z.literal("block_tab"), tab_id: z.uuid(), blocked: z.boolean(), reason: blockReason }),
+  z.object({ action: z.literal("waitlist_add"), data: waitlistSchema }),
+  z.object({
+    action: z.literal("waitlist_status"),
+    entry_id: z.uuid(),
+    status: z.enum(["aguardando", "chamado", "desistiu"]),
+  }),
+  z.object({ action: z.literal("waitlist_seat"), entry_id: z.uuid(), table_id: z.uuid().nullable() }),
 ]);
+const WAITLIST_ACTIONS = new Set(["waitlist_add", "waitlist_status", "waitlist_seat"]);
 export async function POST(
   request: Request,
   context: RouteContext<"/api/staff/[role]">,
@@ -235,9 +256,22 @@ export async function POST(
     );
   if ((cmd.action === "discount" || cmd.action === "fee") && restaurantAccess && !restaurantAccess.features.finance)
     return Response.json({ error: "Função não incluída no seu plano" }, { status: 403 });
+  const blocksAction = cmd.action === "pause_orders" || cmd.action === "block_tab";
+  const waitlistAction = WAITLIST_ACTIONS.has(cmd.action);
+  if (
+    restaurantAccess &&
+    ((blocksAction && !restaurantAccess.features.order_blocks) ||
+      (waitlistAction && !restaurantAccess.features.waitlist))
+  )
+    return Response.json({ error: "Função não incluída no seu plano" }, { status: 403 });
+  // A lista de espera é do salão; cozinha e bar não chegam nela.
+  if (waitlistAction && role.data !== "garcom")
+    return Response.json({ error: "Acesso negado" }, { status: 403 });
   // O banco também confere (triggers); aqui a mensagem fica mais clara.
   const needed =
-    cmd.action === "close"
+    blocksAction
+      ? "block_orders"
+      : cmd.action === "close"
       ? "close_tab"
       : cmd.action === "pay" || cmd.action === "void_payment"
         ? "register_payment"
@@ -372,6 +406,59 @@ export async function POST(
       return Response.json({ error: "Pagamento não encontrado" }, { status: 404 });
     const rpc = await ctx.db.rpc("void_payment", { p_payment: cmd.payment_id, p_reason: cmd.reason || null });
     result = { error: rpc.error, data: rpc.error ? null : { ok: true } };
+  } else if (cmd.action === "pause_orders")
+    result = await ctx.db.rpc("set_orders_paused", {
+      p_restaurant: restaurant.data,
+      p_paused: cmd.paused,
+      p_reason: cmd.reason || null,
+    });
+  else if (cmd.action === "block_tab") {
+    const { data: tab } = await ctx.db
+      .from("tabs")
+      .select("id")
+      .eq("id", cmd.tab_id)
+      .eq("restaurant_id", restaurant.data)
+      .eq("status", "open")
+      .maybeSingle();
+    if (!tab)
+      return Response.json({ error: "Comanda indisponível" }, { status: 404 });
+    result = await ctx.db.rpc("set_tab_blocked", {
+      p_tab: cmd.tab_id,
+      p_blocked: cmd.blocked,
+      p_reason: cmd.reason || null,
+    });
+  } else if (cmd.action === "waitlist_add")
+    result = await ctx.db
+      .rpc("add_waitlist_entry", {
+        p_restaurant: restaurant.data,
+        p_name: cmd.data.name,
+        p_party: cmd.data.party_size,
+        p_phone: cmd.data.phone || null,
+        p_note: cmd.data.note || null,
+      })
+      .select("id,number,public_token")
+      .single();
+  else if (cmd.action === "waitlist_status")
+    result = await ctx.db
+      .from("waitlist_entries")
+      .update({ status: cmd.status })
+      .eq("id", cmd.entry_id)
+      .eq("restaurant_id", restaurant.data)
+      .select("id,status")
+      .maybeSingle();
+  else if (cmd.action === "waitlist_seat") {
+    const { data: entry } = await ctx.db
+      .from("waitlist_entries")
+      .select("id")
+      .eq("id", cmd.entry_id)
+      .eq("restaurant_id", restaurant.data)
+      .maybeSingle();
+    if (!entry)
+      return Response.json({ error: "Grupo não encontrado" }, { status: 404 });
+    result = await ctx.db.rpc("seat_waitlist_entry", {
+      p_entry: cmd.entry_id,
+      p_table: cmd.table_id,
+    });
   } else
     result = await ctx.db
       .from("menu_items")

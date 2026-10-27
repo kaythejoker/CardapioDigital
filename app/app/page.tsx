@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ArrowUpRight, ChefHat, LayoutDashboard, Store, UtensilsCrossed, Wine } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { canOpenManagerPanel } from "@/lib/permissions";
+import { LanguageSwitcher, T } from "@/components/i18n";
+import { msg } from "@/lib/i18n";
 
 async function Home() {
   await connection();
@@ -39,8 +41,8 @@ async function Home() {
   if (resellers.data?.length) links.add("revenda");
   return (
     <main className="operations-hub">
-      <header className="hub-brand"><BrandMark/><span>Comanda</span><small>{user.email}</small></header>
-      <div className="hub-intro"><p>SEU RESTAURANTE, CONECTADO</p><h1 className="font-heading text-4xl">Sua operação</h1><span>Escolha o painel para começar.</span></div>
+      <header className="hub-brand"><BrandMark/><span>Comanda</span><small>{user.email}</small><LanguageSwitcher compact className="hub-language" /></header>
+      <div className="hub-intro"><p><T>{"SEU RESTAURANTE, CONECTADO"}</T></p><h1 className="font-heading text-4xl"><T>{"Sua operação"}</T></h1><span><T>{"Escolha o painel para começar."}</T></span></div>
       <div className="hub-grid">
         {[...links].map((role) => (
           <Link
@@ -50,28 +52,28 @@ async function Home() {
           >
             <span className="hub-card-icon">{role === "gestor" ? <LayoutDashboard/> : role === "garcom" ? <UtensilsCrossed/> : role === "cozinha" ? <ChefHat/> : role === "bar" ? <Wine/> : <Store/>}</span>
             <ArrowUpRight className="hub-card-arrow"/>
-            <h2>{
+            <h2><T>{
               {
-                gestor: "Painel do gestor",
-                garcom: "Salão e mesas",
-                cozinha: "Fila da cozinha",
-                bar: "Fila do bar",
-                revenda: "Painel da revenda",
-              }[role]
-            }</h2><p>{{gestor:"Acompanhe o dia, edite o cardápio e personalize a marca do restaurante.",garcom:"Abra mesas, consulte o PIN e acompanhe o atendimento.",cozinha:"Organize o preparo e avise quando cada pedido estiver pronto.",bar:"Bebidas e drinques na ordem certa; avise quando cada pedido estiver pronto.",revenda:"Gerencie seus restaurantes, acessos e a identidade da revenda."}[role]}</p><span className="hub-card-link">Abrir painel <ArrowUpRight size={16}/></span>
+                gestor: msg("Painel do gestor"),
+                garcom: msg("Salão e mesas"),
+                cozinha: msg("Fila da cozinha"),
+                bar: msg("Fila do bar"),
+                revenda: msg("Painel da revenda"),
+              }[role] ?? role
+            }</T></h2><p><T>{{gestor: msg("Acompanhe o dia, edite o cardápio e personalize a marca do restaurante."),garcom: msg("Abra mesas, consulte o PIN e acompanhe o atendimento."),cozinha: msg("Organize o preparo e avise quando cada pedido estiver pronto."),bar: msg("Bebidas e drinques na ordem certa; avise quando cada pedido estiver pronto."),revenda: msg("Gerencie seus restaurantes, acessos e a identidade da revenda.")}[role] ?? ""}</T></p><span className="hub-card-link"><T>{"Abrir painel"}</T>{" "}<ArrowUpRight size={16}/></span>
           </Link>
         ))}
       </div>
-      {(members.data ?? []).filter(m => (m.roles ?? []).includes("manager")).map(m => {const r = Array.isArray(m.restaurants) ? m.restaurants[0] : m.restaurants; if (!r) return null; const t = r.tables.find(t => t.active && t.label === "12") || r.tables.find(t => t.active); return t && <Link key={r.slug} href={publicMenuUrl(r.slug,t.qr_token)} target="_blank" className="hub-customer"><span className="hub-card-icon"><UtensilsCrossed/></span><span><strong>Visão do cliente ↗</strong><span className="mt-2 block text-sm text-muted-foreground">{r.name} · Mesa {t.label} · Cardápio público</span></span><ArrowUpRight/></Link>;})}
+      {(members.data ?? []).filter(m => (m.roles ?? []).includes("manager")).map(m => {const r = Array.isArray(m.restaurants) ? m.restaurants[0] : m.restaurants; if (!r) return null; const t = r.tables.find(t => t.active && t.label === "12") || r.tables.find(t => t.active); return t && <Link key={r.slug} href={publicMenuUrl(r.slug,t.qr_token)} target="_blank" className="hub-customer"><span className="hub-card-icon"><UtensilsCrossed/></span><span><strong><T>{"Visão do cliente ↗"}</T></strong><span className="mt-2 block text-sm text-muted-foreground">{r.name} · <T vars={{ label: t.label }}>{"Mesa {label}"}</T> · <T>{"Cardápio público"}</T></span></span><ArrowUpRight/></Link>;})}
       {!links.size && (
-        <p>Seu acesso ainda não foi vinculado. Fale com o gestor.</p>
+        <p><T>{"Seu acesso ainda não foi vinculado. Fale com o gestor."}</T></p>
       )}
     </main>
   );
 }
 export default function Page() {
   return (
-    <Suspense fallback={<p className="p-8">Carregando seus acessos…</p>}>
+    <Suspense fallback={<p className="p-8"><T>{"Carregando seus acessos…"}</T></p>}>
       <Home />
     </Suspense>
   );

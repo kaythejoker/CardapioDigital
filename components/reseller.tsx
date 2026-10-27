@@ -15,6 +15,8 @@ import { PlansView, SubscriptionPanel, type Plan, type Subscription, type Subscr
 import { STATUS_LABELS, type Access } from "@/lib/features";
 import { DomainPanel } from "@/components/domains";
 import { money } from "@/lib/menu-types";
+import { useI18n } from "@/components/i18n";
+import { msg } from "@/lib/i18n";
 
 type ResellerData = {
   reseller: {
@@ -46,6 +48,7 @@ type ResellerData = {
   access: Record<string, Access | null>;
 };
 export function Reseller() {
+  const { t } = useI18n();
   const [data, setData] = useState<ResellerData | null>(null);
   const [view, setView] = useState("restaurants");
   const [error, setError] = useState("");
@@ -57,7 +60,7 @@ export function Reseller() {
     try {
       setData(await jsonRequest("/api/revenda"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível carregar");
+      setError(e instanceof Error ? e.message : msg("Não foi possível carregar"));
     }
   }, []);
   useEffect(() => {
@@ -71,10 +74,10 @@ export function Reseller() {
     try {
       const result = await jsonRequest("/api/revenda", body);
       await refresh();
-      setMessage("Alterações salvas");
+      setMessage(msg("Alterações salvas"));
       return result;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Tente novamente");
+      setError(e instanceof Error ? e.message : msg("Tente novamente"));
       return null;
     } finally {
       setBusy(false);
@@ -83,10 +86,8 @@ export function Reseller() {
   if (!data)
     return (
       <main className="p-8">
-        <p>{error || "Carregando sua revenda…"}</p>
-        <Link href="/app/login" className="mt-5 inline-block underline">
-          Entrar
-        </Link>
+        <p>{error ? t(error) : t("Carregando sua revenda…")}</p>
+        <Link href="/app/login" className="mt-5 inline-block underline">{t("Entrar")}</Link>
       </main>
     );
   const active = data.restaurants.filter((r) => r.status === "active").length;
@@ -103,10 +104,10 @@ export function Reseller() {
       brand={data.reseller}
       title={
         view === "brand"
-          ? "Sua marca, em cada restaurante"
+          ? t("Sua marca, em cada restaurante")
           : view === "plans"
-            ? "Planos e módulos"
-            : "Seus restaurantes"
+            ? t("Planos e módulos")
+            : t("Seus restaurantes")
       }
       active={view}
       onNavigate={(v) => {
@@ -121,7 +122,7 @@ export function Reseller() {
           role="alert"
           className="mb-6 rounded-xl bg-destructive p-4 text-white"
         >
-          {error}
+          {t(error)}
         </p>
       )}
       {message && (
@@ -129,7 +130,7 @@ export function Reseller() {
           role="status"
           className="mb-6 rounded-xl bg-[#2F7D5B]/10 p-4 text-[#2F7D5B]"
         >
-          {message}
+          {t(message)}
         </p>
       )}
       {view === "plans" && (
@@ -139,25 +140,24 @@ export function Reseller() {
         <>
           <div className="reseller-stats mb-6 grid gap-4 sm:grid-cols-3">
             <section className={panelClass}>
-              <p className="text-muted-foreground">Restaurantes ativos</p>
+              <p className="text-muted-foreground">{t("Restaurantes ativos")}</p>
               <b className="mt-3 block font-heading text-4xl">{active}</b>
               <p className="mt-2 text-sm text-muted-foreground">
-                {data.restaurants.filter((r) => statusOf(r.id) === "teste").length} em teste • {data.restaurants.filter((r) => ["atrasada", "suspensa"].includes(statusOf(r.id))).length} com pendência
-              </p>
+                {t("{trial} em teste • {late} com pendência", { trial: data.restaurants.filter((r) => statusOf(r.id) === "teste").length, late: data.restaurants.filter((r) => ["atrasada", "suspensa"].includes(statusOf(r.id))).length })}</p>
             </section>
             <section className={panelClass}>
-              <p className="text-muted-foreground">Receita recorrente do mês</p>
+              <p className="text-muted-foreground">{t("Receita recorrente do mês")}</p>
               <b className="mt-3 block font-heading text-4xl">{money(mrr)}</b>
-              <p className="mt-2 text-sm text-muted-foreground">Soma dos planos ativos e em teste</p>
+              <p className="mt-2 text-sm text-muted-foreground">{t("Soma dos planos ativos e em teste")}</p>
             </section>
             <section className={panelClass}>
-              <p className="text-muted-foreground">Total de restaurantes</p>
+              <p className="text-muted-foreground">{t("Total de restaurantes")}</p>
               <b className="mt-3 block font-heading text-4xl">
                 {data.restaurants.length}
               </b>
-              <select aria-label="Filtrar por status da assinatura" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2 text-sm">
-                <option value="">Todos os status</option>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <select aria-label={t("Filtrar por status da assinatura")} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2 text-sm">
+                <option value="">{t("Todos os status")}</option>
+                {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
               </select>
             </section>
           </div>
@@ -178,20 +178,16 @@ export function Reseller() {
               }
             }}
           >
-            <h3 className="mb-5 font-heading text-2xl">Novo restaurante</h3>
+            <h3 className="mb-5 font-heading text-2xl">{t("Novo restaurante")}</h3>
             <div className="grid items-end gap-4 md:grid-cols-[1fr_1fr_auto]">
-              <label>
-                Nome
-                <input
+              <label>{t("Nome")}<input
                   name="name"
                   required
                   maxLength={100}
                   className={fieldClass}
                 />
               </label>
-              <label>
-                Endereço do cardápio
-                <input
+              <label>{t("Endereço do cardápio")}<input
                   name="slug"
                   required
                   pattern="[a-z0-9]+(-[a-z0-9]+)*"
@@ -201,23 +197,18 @@ export function Reseller() {
                   className={fieldClass}
                 />
               </label>
-              <button disabled={busy} className={actionClass}>
-                Criar restaurante
-              </button>
+              <button disabled={busy} className={actionClass}>{t("Criar restaurante")}</button>
             </div>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Use letras minúsculas, números e hífens no endereço.
-            </p>
+            <p className="mt-3 text-sm text-muted-foreground">{t("Use letras minúsculas, números e hífens no endereço.")}</p>
           </form>
           {invite && (
             <section className="mb-7">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="font-heading text-xl">
-                  Gestor de{" "}
-                  {data.restaurants.find((r) => r.id === invite)?.name}
+                  {t("Gestor de {name}", { name: data.restaurants.find((r) => r.id === invite)?.name ?? "" })}
                 </h3>
                 <button
-                  aria-label="Fechar convite"
+                  aria-label={t("Fechar convite")}
                   onClick={() => setInvite(null)}
                 >
                   <X />
@@ -242,14 +233,14 @@ export function Reseller() {
                   <span
                     className={`rounded-full px-3 py-1 text-xs ${r.status === "active" ? "bg-[#2F7D5B]/10 text-[#2F7D5B]" : "bg-secondary text-muted-foreground"}`}
                   >
-                    {r.status === "active" ? "Ativo" : "Inativo"}
+                    {r.status === "active" ? t("Ativo") : t("Inativo")}
                   </span>
                 </div>
                 <p className="my-4 text-sm text-muted-foreground">
                   /{r.slug}
                   {data.ratings?.[r.id]?.avg != null && (
-                    <span className="ml-3" aria-label={`Satisfação ${data.ratings[r.id].avg} em 30 dias`}>
-                      ★ {Number(data.ratings[r.id].avg).toFixed(1)} <small>({data.ratings[r.id].responses} em 30 dias)</small>
+                    <span className="ml-3" aria-label={t("Satisfação {n} em 30 dias", { n: data.ratings[r.id].avg ?? "" })}>
+                      ★ {Number(data.ratings[r.id].avg).toFixed(1)} <small>({t("{n} em 30 dias", { n: data.ratings[r.id].responses })})</small>
                     </span>
                   )}
                 </p>
@@ -257,15 +248,11 @@ export function Reseller() {
                   <Link
                     href={`/app/gestor?restaurant_id=${r.id}`}
                     className="text-primary underline"
-                  >
-                    Gerenciar restaurante
-                  </Link>
+                  >{t("Gerenciar restaurante")}</Link>
                   <button
                     onClick={() => setInvite(r.id)}
                     className="text-primary underline"
-                  >
-                    Convidar gestor
-                  </button>
+                  >{t("Convidar gestor")}</button>
                   <button
                     disabled={busy}
                     onClick={() =>
@@ -281,7 +268,7 @@ export function Reseller() {
                         : "text-[#2F7D5B] underline"
                     }
                   >
-                    {r.status === "active" ? "Desativar" : "Ativar"}
+                    {r.status === "active" ? t("Desativar") : t("Ativar")}
                   </button>
                 </div>
                 <SubscriptionPanel
@@ -325,6 +312,7 @@ function BrandForm({
   busy: boolean;
   onSave: (body: unknown) => Promise<unknown>;
 }) {
+  const { t } = useI18n();
   const [logo, setLogo] = useState(reseller.logo_url);
   const [color, setColor] = useState(reseller.primary_color);
   return (
@@ -346,9 +334,7 @@ function BrandForm({
         });
       }}
     >
-      <label className="block">
-        Nome da revenda
-        <input
+      <label className="block">{t("Nome da revenda")}<input
           name="name"
           required
           maxLength={100}
@@ -356,9 +342,7 @@ function BrandForm({
           className={fieldClass}
         />
       </label>
-      <label className="block">
-        Nome do produto
-        <input
+      <label className="block">{t("Nome do produto")}<input
           name="brand_name"
           required
           maxLength={100}
@@ -371,14 +355,12 @@ function BrandForm({
         id={reseller.id}
         value={logo}
         onChange={setLogo}
-        label="Logo da marca"
+        label={t("Logo da marca")}
       />
-      <label className="block">
-        Cor principal
-        <div className="mt-3 flex items-center gap-4">
+      <label className="block">{t("Cor principal")}<div className="mt-3 flex items-center gap-4">
           <input
             type="color"
-            aria-label="Cor principal"
+            aria-label={t("Cor principal")}
             value={color}
             onChange={(e) => setColor(e.target.value)}
             className="h-12 w-16"
@@ -387,28 +369,17 @@ function BrandForm({
         </div>
       </label>
       <fieldset className="space-y-4 rounded-2xl border p-4">
-        <legend className="px-2 font-semibold">Suporte aos restaurantes</legend>
-        <p className="text-sm text-muted-foreground">Aparece no botão Ajuda de todos os painéis dos seus restaurantes.</p>
-        <label className="block">
-          WhatsApp (com DDI e DDD, só números)
-          <input name="support_whatsapp" inputMode="tel" placeholder="5511999999999" defaultValue={reseller.support_whatsapp ?? ""} className={fieldClass} aria-label="WhatsApp de suporte" />
+        <legend className="px-2 font-semibold">{t("Suporte aos restaurantes")}</legend>
+        <p className="text-sm text-muted-foreground">{t("Aparece no botão Ajuda de todos os painéis dos seus restaurantes.")}</p>
+        <label className="block">{t("WhatsApp (com DDI e DDD, só números)")}<input name="support_whatsapp" inputMode="tel" placeholder="5511999999999" defaultValue={reseller.support_whatsapp ?? ""} className={fieldClass} aria-label={t("WhatsApp de suporte")} />
         </label>
-        <label className="block">
-          E-mail de suporte
-          <input name="support_email" type="email" defaultValue={reseller.support_email ?? ""} className={fieldClass} aria-label="E-mail de suporte" />
+        <label className="block">{t("E-mail de suporte")}<input name="support_email" type="email" defaultValue={reseller.support_email ?? ""} className={fieldClass} aria-label={t("E-mail de suporte")} />
         </label>
-        <label className="block">
-          Horário de atendimento
-          <input name="support_hours" maxLength={120} placeholder="Seg a sex, 9h às 18h" defaultValue={reseller.support_hours ?? ""} className={fieldClass} aria-label="Horário de atendimento" />
+        <label className="block">{t("Horário de atendimento")}<input name="support_hours" maxLength={120} placeholder={t("Seg a sex, 9h às 18h")} defaultValue={reseller.support_hours ?? ""} className={fieldClass} aria-label={t("Horário de atendimento")} />
         </label>
       </fieldset>
-      <p className="text-sm text-muted-foreground">
-        O nome, o logo e a cor aparecem em todos os restaurantes da revenda. O
-        domínio é cadastrado abaixo, em &ldquo;Domínio da revenda&rdquo;.
-      </p>
-      <button disabled={busy} className={actionClass}>
-        Salvar marca
-      </button>
+      <p className="text-sm text-muted-foreground">{t("O nome, o logo e a cor aparecem em todos os restaurantes da revenda. O domínio é cadastrado abaixo, em “Domínio da revenda”.")}</p>
+      <button disabled={busy} className={actionClass}>{t("Salvar marca")}</button>
     </form>
   );
 }

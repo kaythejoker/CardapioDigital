@@ -3,6 +3,7 @@ import { Menu } from "@/components/menu";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { loadMenu } from "@/lib/menu-data";
+import { T } from "@/components/i18n";
 
 async function Content({ params }: PageProps<"/[slug]/m/[qrToken]">) {
   const { slug, qrToken } = await params;
@@ -14,5 +15,5 @@ async function Content({ params }: PageProps<"/[slug]/m/[qrToken]">) {
 }
 
 export default function Page(props: PageProps<"/[slug]/m/[qrToken]">) {
-  return <Suspense fallback={<main className="p-8 text-center">Preparando seu cardápio…</main>}><Content {...props} /></Suspense>;
+  return <Suspense fallback={<main className="p-8 text-center"><T>{"Preparando seu cardápio…"}</T></main>}><Content {...props} /></Suspense>;
 }

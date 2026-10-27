@@ -113,6 +113,8 @@ npx vercel link --yes --scope nutrivox --project cardapio-digital
 npx vercel deploy --prod --yes --scope nutrivox
 ```
 
+O CLI precisa estar logado numa conta com acesso ao time `nutrivox` (`npx vercel teams ls` deve listá-lo); a conta "duzz" não tem. No PowerShell desta máquina, scripts `.ps1` estão bloqueados: use `npx.cmd`. O terminal do app de desenvolvimento encerra o `vercel login` antes de o código do aparelho ser confirmado; rode-o num terminal comum ou em segundo plano.
+
 O projeto já está vinculado. vercel.json define Next.js e funções em São Paulo (gru1), junto do banco. As três variáveis Supabase estão em Production/Preview; NEXT_PUBLIC_APP_URL de Production aponta à URL pública acima. O deploy veio da pasta local, sem commit/push.
 
 O vínculo `.vercel/project.json` permanece em `cardapio-digital`. Este projeto usa `APP_SURFACE=admin`, `NEXT_PUBLIC_ADMIN_URL=https://cardapio-digital-sigma-ten.vercel.app` e `NEXT_PUBLIC_MENU_URL=https://cardapio-cliente-three.vercel.app`.

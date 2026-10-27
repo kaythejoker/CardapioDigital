@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import { Manager } from "@/components/manager";
+import { T } from "@/components/i18n";
+
 async function Content({ searchParams }: PageProps<"/app/gestor">) {
   const params = await searchParams;
   return (
@@ -14,7 +16,7 @@ async function Content({ searchParams }: PageProps<"/app/gestor">) {
 }
 export default function Page(props: PageProps<"/app/gestor">) {
   return (
-    <Suspense fallback={<p className="p-8">Carregando painel…</p>}>
+    <Suspense fallback={<p className="p-8"><T>{"Carregando painel…"}</T></p>}>
       <Content {...props} />
     </Suspense>
   );
