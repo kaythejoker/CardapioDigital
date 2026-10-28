@@ -1,139 +1,25 @@
-# Comanda — Cardápio Digital com Pedido por Mesa
+# Comanda — A Digital Menu and Table-Ordering System for Restaurants
 
-MVP white label: cliente escaneia o QR, valida o PIN da mesa e envia pedidos à cozinha. Garçom, cozinha, gestor e revenda têm acessos separados. A [spec](docs/spec.md) define o escopo; [progresso e evidências](docs/progresso.md) registram a entrega.
+#### Video Demo: https://youtu.be/Blkp2pwkTKo
 
-**Estado em 21/10/2026: V0 (etapas 1–8) e Fase 2 ([spec-fase2.md](docs/spec-fase2.md), 11 etapas) concluídas e publicadas.** A Fase 2 trouxe papéis múltiplos e permissões por pessoa, registro de operações e histórico, cancelamento por item, estoque, alertas sonoros, chamar garçom e pedir a conta, painel do bar, união de mesas, financeiro (pagamentos por forma, taxa de serviço, desconto, fechamento do dia), relatórios com CSV, pesquisa de satisfação, planos e assinaturas por revenda, suporte e ajuda, domínio próprio e comanda do cliente atualizada a cada 3 s. O histórico inicial de setup não representa mais o estado da implementação.
+#### Description
 
-**Produção:** https://cardapio-digital-sigma-ten.vercel.app
-**Equipe:** https://cardapio-digital-sigma-ten.vercel.app/app/login
+Comanda is a web application that replaces both the printed menu and the waiter's order pad in a small restaurant. A guest scans the QR code glued to the table, reads the menu on their own phone, types the PIN of the tab the waiter opened for that table, and sends the order straight to the kitchen. The kitchen and the bar see the order appear on a screen seconds later, move it through *starting* and *ready*, and the waiter only walks to the table to deliver the food and close the bill. Everything the staff needs — floor, kitchen, bar, manager and the reseller who sells the product to other restaurants — lives in the same application, behind separate logins with separate permissions.
 
-**Cardápio público:** https://cardapio-cliente-three.vercel.app
+I built it because the restaurants I know lose money in two very ordinary places: a guest waits ten minutes for someone to take the order, and the kitchen receives handwriting it cannot read. A QR code on the table removes the first problem, and a typed order removes the second. The project is white label on purpose: one deployment serves many restaurants, each with its own name, logo, colours and optionally its own domain, so a reseller can sell it as their own product.
 
-São dois projetos Vercel, com código compartilhado neste repositório e o mesmo Supabase. O painel abre a visão do cliente por um link direto. Cada mesa tem QR fixo; o PIN pertence à comanda aberta e vale para vários pedidos, até seu fechamento.
+**How it is put together.** The application is a Next.js 16 project written in TypeScript, styled with Tailwind, and backed by Supabase — Postgres with Row Level Security, Auth, Realtime and Storage. It runs on Vercel as two deployments that share this one repository and the same database: one serves the staff panel, the other serves only the public menu, so a bug in a customer-facing page can never expose a management route. Money is stored as integer cents, never floating point, and every date is handled in the `America/Sao_Paulo` time zone.
 
-Next.js 16.4, TypeScript, Tailwind 4, shadcn/ui, Supabase (Postgres/RLS, Auth, Realtime, Storage) e Vercel. Valores em centavos, BRL, fuso America/Sao_Paulo.
+**What is in each file.** `app/` holds the routes. `app/[slug]/m/[qrToken]/page.tsx` is the page a guest reaches from the QR code; `app/[slug]/consulta/page.tsx` is the read-only menu for someone who is not seated; `app/[slug]/espera/[token]/page.tsx` is the ticket of the waiting list, showing the guest their number and how many parties are ahead. `app/app/` holds one page per role — `login`, `garcom` (waiter), `cozinha` (kitchen), `bar`, `gestor` (manager), `revenda` (reseller) and `aceitar-convite` for a new staff member accepting an invitation. `app/api/` holds thirteen route handlers, the only place where the database is written: `customer/[slug]/[qrToken]` validates the PIN and accepts an order, `staff/[role]` serves and advances the kitchen, bar and waiter queues, `manage/[restaurantId]` edits menus, stock and settings, `team/[restaurantId]` manages people and permissions, `reports/[restaurantId]` and `history/[restaurantId]` produce sales reports and the audit trail, `qr/[restaurantId]` builds the printable QR sheet, `upload` re-encodes photographs, and `revenda` and `domains` serve the reseller and custom domains.
 
-## Acessar e testar
+`components/` holds the client interfaces: `menu.tsx` (1,400 lines) is the guest's menu, cart, PIN screen and live tab; `operation.tsx` is the floor and kitchen board; `manager.tsx` and `item-editor.tsx` are the manager's panels; `reports.tsx`, `reseller.tsx`, `subscriptions.tsx`, `domains.tsx`, `support.tsx` and the two `waitlist-*` files cover the rest.
 
-| Conta demo | Acesso |
-| --- | --- |
-| revenda@comanda.dev | Restaurantes e marca |
-| gestor@brasa.dev | Gestor do Brasa Bistrô |
-| garcom@brasa.dev | Mesas e comandas do Brasa |
-| cozinha@brasa.dev | Cozinha do Brasa |
-| gestor@cantina.dev | Gestor da Cantina, isolada do Brasa |
-| socios@comanda.dev | Gestor, salão e cozinha do Brasa de demonstração (`brasa-demo`) |
+`lib/` holds the logic I wanted testable without a browser. `permissions.ts` defines roles and per-person permissions and deliberately mirrors a Postgres function, so neither side can drift alone. `split.ts` divides a bill per guest: an item ordered for yourself is yours, an item marked *shared with the table* is divided equally among whoever was already on the tab when it was sent, and the leftover cents stay with the person who ordered. `priority.ts` implements three kitchen queue modes (first-in-first-out, by complexity, or balanced between waiting time and complexity). `availability.ts` decides whether an item is being served right now, including windows that cross midnight. `customer.ts` issues the guest's session as a hashed token in an HTTP-only cookie. `qr-pdf.ts` generates the printable QR codes with `pdf-lib`. `i18n.ts` and `i18n-dict.ts` translate the interface to English and Spanish, keyed by the Portuguese phrase itself, so a missing translation degrades to Portuguese instead of breaking. `proxy.ts` at the root resolves custom domains and keeps the staff session fresh.
 
-A senha da revenda está em `SEED_RESELLER_PASSWORD` no `.env.local` desta máquina; as demais contas demo usam `SEED_USER_PASSWORD`. Não há senha fixa no código. Novos acessos são criados pela revenda/gestor com senha inicial, opção escolhida para esta implantação. Convites por e-mail dependem de SMTP próprio.
+`supabase/migrations/` holds the twenty-two incremental migrations that build the twenty-seven tables and their RLS policies, plus `seed.sql` with two demo restaurants. `scripts/` holds the operational scripts — applying migrations, seeding demo users, creating the Storage bucket, and `db-check.ts`, which replays every migration into an in-memory Postgres (PGlite) and asserts the security rules, so the schema is tested without Docker. `tests/` holds five unit test files and fourteen Playwright end-to-end specs. In total the source is about 12,000 lines of TypeScript.
 
-A conta dos sócios usa `DEMO_USER_PASSWORD`. Seu restaurante tem 23 itens, 12 mesas e pedidos fictícios para apresentar a operação. O script `npx tsx --env-file=.env.local scripts/prepare-partner-demo.ts` prepara esse restaurante separadamente do seed original; não o execute a cada deploy. A apresentação e os prints estão em `output/v0/`, fora do Git.
+**Design decisions.** The hardest one was where authorisation lives. I put it in the database: Row Level Security on all twenty-seven tables, and the anonymous guest never reads a table directly — their requests go through Postgres functions that run with `app.actor = 'customer'`. If I ever forget a check in an API route, Postgres still refuses. The second was the PIN. It belongs to the open tab, not to the table, so it is good for many orders during one meal and dies the moment the waiter closes the bill — a guest who leaves cannot order again from the parking lot, and the next table does not inherit a password. The third was selling by module: the reseller's plans switch features on per restaurant, so a small place pays for a menu and a big one pays for stock, finance, reports and its own domain.
 
-1. Entre como garçom, abra uma mesa e veja seu PIN.
-2. No gestor, use **Mesas e QR → Abrir cardápio**, ou imprima o PDF e escaneie o QR.
-3. Escolha um item, preencha adicionais obrigatórios, valide o PIN e envie.
-4. Em outro navegador, entre na cozinha e toque **Iniciar** e **Pronto**.
-5. No garçom, marque entregue e feche a comanda. A autorização do cliente é revogada imediatamente.
+#### How to run it
 
-## Desenvolvimento
-
-Para continuar em outro PC, atualize a branch `main` com `git pull --ff-only origin main` e execute `npm ci`. O `.env.local` não vai para o Git: configure-o a partir de `.env.example`, usando as credenciais existentes por um canal privado. Use o projeto Supabase já implantado, sem rodar seed, reset ou recriar contas: a demonstração está em uso pelos sócios.
-
-Requer Node.js 24 e npm. Na pasta do repositório, em PowerShell:
-
-```powershell
-npm ci
-Copy-Item .env.example .env.local
-# Preencha o arquivo antes de iniciar.
-npm run dev
-```
-
-| Variável | Uso |
-| --- | --- |
-| NEXT_PUBLIC_SUPABASE_URL | URL do Supabase |
-| NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | Chave pública/publishable ou anon compatível |
-| SUPABASE_SECRET_KEY | Chave secreta/service_role, só no servidor |
-| NEXT_PUBLIC_APP_URL | Origem de fallback para desenvolvimento e convites |
-| APP_SURFACE | admin no painel; customer no cardápio; vazio no desenvolvimento conjunto |
-| NEXT_PUBLIC_ADMIN_URL | Origem do painel da equipe |
-| NEXT_PUBLIC_MENU_URL | Origem pública dos QR codes e links do cliente |
-| VERCEL_TOKEN | Token de conta da Vercel para registrar domínios próprios no projeto público; sem ele a tela só mostra as instruções de DNS |
-| VERCEL_PROJECT_ID_MENU | Projeto público (`cardapio-cliente`) onde os domínios são registrados |
-| VERCEL_TEAM_ID | Time `nutrivox` na Vercel |
-| DEMO_USER_PASSWORD | Senha da demonstração dos sócios, somente local |
-| SEED_USER_PASSWORD | Somente seed/testes locais; não enviar à Vercel |
-| SEED_RESELLER_PASSWORD | Senha própria da revenda existente, usada nos testes locais |
-
-Projeto Supabase: `yekmailbymutimhmddzx`, Nutrivox. Não usar GrowthTracker. Credenciais, .vercel/, testes gerados e PDFs de QA são ignorados pelo Git e pela publicação.
-
-## Banco e Storage
-
-Migrations incrementais em supabase/migrations; não editar as já aplicadas. O seed SQL contém dois restaurantes, mesas e cardápios. Ele já foi aplicado no projeto existente e não deve rodar em cada deploy.
-
-| Comando | Uso |
-| --- | --- |
-| npm run db:check | Aplica migrations/seed em PGlite e verifica RLS/regras, sem Docker. |
-| npx supabase migration new nome | Cria nova migration com timestamp da CLI. |
-| npm run db:deploy | Aplica migrations pendentes pelo Management API; lê SUPABASE_ACCESS_TOKEN só do ambiente do processo. Destino fixo: projeto autorizado acima. |
-| npm run storage:setup | Cria/atualiza restaurant-images, público para leitura, WebP até 5 MB; escrita pelas rotas autenticadas. |
-| npm run db:seed-users | Cria/vincula contas demo com a senha definida localmente. |
-
-O deploy registra cada migration e seu SQL em uma transação. O token de gerenciamento não pertence ao .env.local nem às variáveis da Vercel. Fotos JPG/PNG/WebP são validadas e reencodificadas por Sharp antes de gravar no Storage.
-
-## Testes
-
-```powershell
-npm run typecheck
-npm run lint
-npm test
-npm run db:check
-npm run build
-npx playwright install chromium
-npm run test:e2e
-npm audit --omit=dev
-```
-
-Os E2E (13 cenários, um worker) usam o Supabase do .env.local, criam registros temporários identificáveis e removem esses registros em finally. Cobrem cliente/cozinha/garçom, segurança, implantação pelo painel, equipe, upload/PDF, prioridades e marca, e da Fase 2: estoque e cancelamento por item, chamadas e alertas, bar, união de mesas, financeiro, histórico/relatórios/pesquisa, assinaturas, domínio próprio (só local, pois depende do `Host`) e comanda em tempo real. SEED_USER_PASSWORD precisa corresponder às contas demo. Não rode limpeza do banco nem edite código durante a regressão: os testes dependem do servidor de desenvolvimento recompilar sem interrupção.
-
-Para testar produção:
-
-```powershell
-$env:QA_BASE_URL = 'https://cardapio-digital-sigma-ten.vercel.app'
-npm run test:e2e
-npm run test:4g
-Remove-Item Env:QA_BASE_URL
-```
-
-test:4g usa três contextos novos de Chromium, cache desativado, 9 Mbps/1,5 Mbps e latência 150 ms. Sem QA_BASE_URL, mede localhost:3001; inicie `npm run start -- --port 3001` após o build. Capturas em tmp/.
-
-## Publicação
-
-```powershell
-npx vercel login
-npx vercel link --yes --scope nutrivox --project cardapio-digital
-npx vercel deploy --prod --yes --scope nutrivox
-```
-
-O CLI precisa estar logado numa conta com acesso ao time `nutrivox` (`npx vercel teams ls` deve listá-lo); a conta "duzz" não tem. No PowerShell desta máquina, scripts `.ps1` estão bloqueados: use `npx.cmd`. O terminal do app de desenvolvimento encerra o `vercel login` antes de o código do aparelho ser confirmado; rode-o num terminal comum ou em segundo plano.
-
-O projeto já está vinculado. vercel.json define Next.js e funções em São Paulo (gru1), junto do banco. As três variáveis Supabase estão em Production/Preview; NEXT_PUBLIC_APP_URL de Production aponta à URL pública acima. O deploy veio da pasta local, sem commit/push.
-
-O vínculo `.vercel/project.json` permanece em `cardapio-digital`. Este projeto usa `APP_SURFACE=admin`, `NEXT_PUBLIC_ADMIN_URL=https://cardapio-digital-sigma-ten.vercel.app` e `NEXT_PUBLIC_MENU_URL=https://cardapio-cliente-three.vercel.app`.
-
-Para publicar o cliente sem alterar esse vínculo, use as variáveis de processo abaixo. O projeto público tem `APP_SURFACE=customer`, a origem administrativa e as mesmas três variáveis Supabase. As APIs de equipe retornam 404 nessa publicação.
-
-```powershell
-$env:VERCEL_PROJECT_ID = 'prj_fblGqEvBa78sBgAcVjnzzkoBKoBO'
-$env:VERCEL_ORG_ID = 'team_rtfVwbf1pzgX89eOofZsWCbc'
-npx vercel deploy --prod --yes --scope nutrivox
-Remove-Item Env:VERCEL_PROJECT_ID
-Remove-Item Env:VERCEL_ORG_ID
-```
-
-Supabase Auth Site URL está em produção; callbacks /app/aceitar-convite autorizados em produção e localhost 3000/3001. Para convites, configure SMTP próprio e valide uma entrega antes de usar e-mail. A criação com senha inicial funciona sem SMTP.
-
-## Observações da revisão
-
-- RLS nas 27 tabelas públicas (15 do MVP e 12 da Fase 2). Sessões/tentativas não concedem leitura direta ao cliente; as rotas do cliente anônimo usam RPCs com `app.actor = 'customer'`.
-- Zero alertas em dependências de produção. O audit completo mantém alertas transitivos de ferramentas em braces ([advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)); o downgrade major sugerido não foi aplicado.
-- O advisor mantém o aviso de proteção contra senhas vazadas, disponível no [plano Pro ou superior](https://supabase.com/docs/guides/auth/password-security). Senha mínima configurada: 12 caracteres.
-- Pagamentos são registrados à mão pela equipe (forma e valor); fechamento da conta pelo celular, Pix, gateway de cobrança, PDV, impressão de comandas e delivery ficaram fora (Fase 3).
+Requires Node.js 24. Copy `.env.example` to `.env.local`, fill in the Supabase keys, then `npm ci` and `npm run dev`. `DEVELOPMENT.md` documents the environment variables, the database commands, the test suite and the deployment in detail.
