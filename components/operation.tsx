@@ -816,6 +816,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                 );
                 const hasReady = orders.some((o) => o.status === "pronto");
                 const tableCalls = data.calls.filter((c) => c.table_id === t.id);
+                const hasLate = orders.some((o) => o.status !== "pronto" && isLate(o, now));
                 return (
                   <button
                     key={t.id}
@@ -827,13 +828,18 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                       setMerging(false);
                       setBlocking(false);
                     }}
-                    className={`waiter-table ${hasReady ? "ready" : tab ? "occupied" : "free"} ${tableCalls.length ? "calling" : ""} ${isMerged ? "merged" : ""}`}
+                    className={`waiter-table ${hasReady ? "ready" : tab ? "occupied" : "free"} ${hasLate ? "late" : ""} ${tableCalls.length ? "calling" : ""} ${isMerged ? "merged" : ""}`}
                   >
                     <span className="text-sm text-muted-foreground">{tr("Mesa")}</span>
                     <h3 className="my-2 font-heading text-4xl">{t.label}</h3>
                     {tab && (isMerged || mergedTables(tab.id).length > 0) && (
                       <span className="merged-badge">
                         <Link2 size={13} /> {isMerged ? tr("Unida à mesa {label}", { label: tabLabel(tab.id).split("+")[0] }) : tr("Com {labels}", { labels: mergedTables(tab.id).map((m) => m.label).join(", ") })}
+                      </span>
+                    )}
+                    {hasLate && (
+                      <span className="late-badge">
+                        <Clock size={13} /> {tr("Atrasada")}
                       </span>
                     )}
                     {tableCalls.map((c) => (
