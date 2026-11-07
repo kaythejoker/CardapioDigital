@@ -3,6 +3,8 @@
 @import "shadcn/tailwind.css";
 @import "./product.css";
 @import "./panels.css";
+@import "./panel-theme.generated.css";
+@import "./panel-brand.css";
 
 @custom-variant dark (&:is(.dark *));
 

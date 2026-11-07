@@ -1,0 +1,161 @@
+/*
+ * Identidade MesaClick dos painéis da equipe (não vale para o cardápio do
+ * cliente). Vem depois de panel-theme.generated.css, que converte as cores
+ * fixas de product.css e panels.css; aqui ficam os tokens e os ajustes feitos
+ * à mão. Tudo depende da classe .panel-theme na raiz da página.
+ *
+ * Paleta tirada da logo: azul-marinho #0f1b2d (Mesa), azul #0b6bff → ciano
+ * #19a7ff (Click), cinza #5b6678 (slogan).
+ */
+body:has(.panel-theme),
+.panel-theme {
+  --brand: #0b6bff;
+  --brand-foreground: #ffffff;
+  --brand-accent: #19a7ff;
+  --brand-ink: #0f1b2d;
+
+  --bg: #f3f6fb;
+  --surface: #ffffff;
+  --text: #0f1b2d;
+  --muted-text: #5b6678;
+  --line: #dfe6f0;
+  --subtle: #eaf0f8;
+
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --secondary: var(--subtle);
+  --secondary-foreground: var(--text);
+  --muted: var(--subtle);
+  --muted-foreground: var(--muted-text);
+  --accent: var(--subtle);
+  --accent-foreground: var(--text);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--brand);
+  --chart-1: var(--brand);
+  --chart-2: var(--brand-accent);
+  --chart-5: var(--muted-text);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--subtle);
+  --sidebar-accent-foreground: var(--text);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brand);
+}
+
+body:has(.panel-theme) {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Cozinha e bar: escuro azul-marinho no lugar do marrom quente. */
+body:has(.panel-theme) .dark {
+  --bg: #0b1220;
+  --surface: #131c2e;
+  --text: #eef3fb;
+  --muted-text: #94a3b8;
+  --line: #24314a;
+  --subtle: #1a2539;
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --secondary: var(--subtle);
+  --secondary-foreground: var(--text);
+  --muted: var(--subtle);
+  --muted-foreground: var(--muted-text);
+  --accent: var(--subtle);
+  --accent-foreground: var(--text);
+  --border: var(--line);
+  --input: var(--line);
+}
+body:has(.panel-theme .dark) {
+  background: #0b1220;
+}
+
+/* Títulos: sem serifa, como a logo. */
+body:has(.panel-theme) .font-heading {
+  font-family: var(--font-jakarta), sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Logo */
+.mc-logo {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.mc-logo-dark { display: none; }
+.dark .mc-logo-light { display: none; }
+.dark .mc-logo-dark { display: block; }
+.admin-logo, .operation-logo, .hub-logo, .login-logo { display: block; flex: none; }
+.admin-logo { width: 176px; }
+.admin-brand .admin-brand-tagline {
+  margin-top: 6px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+.operation-logo { width: 148px; }
+.hub-logo { width: 168px; }
+.login-logo { width: 240px; margin: 0 auto; }
+
+/* Salão: livre em branco, ocupada em azul claro. Atraso e chamada (panels.css)
+   continuam por cima, porque as regras geradas vêm antes deste arquivo e as
+   de estado têm mais classes. */
+body:has(.panel-theme) .waiter-table {
+  background: #e8f0fe;
+  border-color: #b8cdf3;
+}
+body:has(.panel-theme) .waiter-table.free {
+  background: #ffffff;
+  border-color: var(--line);
+}
+body:has(.panel-theme) .waiter-table.ready {
+  background: #e1edda;
+  border-color: #9db990;
+}
+body:has(.panel-theme) .waiter-table.late {
+  background: #f9ddd3;
+  border-color: #d4664a;
+}
+body:has(.panel-theme) .waiter-table.calling {
+  background: #fdedc2;
+  border-color: #d99a17;
+}
+body:has(.panel-theme) .waiter-table.late.calling {
+  background: #f9ddd3;
+}
+
+/* Cabeçalho do salão, cozinha e bar: logo acima da saudação. */
+.operation-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+@media (max-width: 599px) {
+  .operation-logo { width: 128px; }
+}
+
+.login-tagline {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}

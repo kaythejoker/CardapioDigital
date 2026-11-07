@@ -21,7 +21,7 @@ export default function AcceptInvitation() {
     return () => data.subscription.unsubscribe();
   }, []);
   return (
-    <main className="mx-auto w-full max-w-md p-8">
+    <main className="panel-theme mx-auto w-full max-w-md p-8">
       <h1 className="font-heading text-3xl">{t("Bem-vindo à equipe")}</h1>
       <p className="my-5">{t("Escolha sua senha para começar.")}</p>
       {ready ? (

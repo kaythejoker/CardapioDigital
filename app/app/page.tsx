@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ArrowUpRight, ChefHat, LayoutDashboard, Store, UtensilsCrossed, Wine } from "lucide-react";
-import { BrandMark } from "@/components/brand-mark";
+import { MesaClickLogo } from "@/components/brand-mark";
 import { canOpenManagerPanel } from "@/lib/permissions";
 import { LanguageSwitcher, T } from "@/components/i18n";
 import { msg } from "@/lib/i18n";
@@ -40,8 +40,8 @@ async function Home() {
   }
   if (resellers.data?.length) links.add("revenda");
   return (
-    <main className="operations-hub">
-      <header className="hub-brand"><BrandMark/><span>Comanda</span><small>{user.email}</small><LanguageSwitcher compact className="hub-language" /></header>
+    <main className="panel-theme operations-hub">
+      <header className="hub-brand"><MesaClickLogo className="hub-logo" priority /><small>{user.email}</small><LanguageSwitcher compact className="hub-language" /></header>
       <div className="hub-intro"><p><T>{"SEU RESTAURANTE, CONECTADO"}</T></p><h1 className="font-heading text-4xl"><T>{"Sua operação"}</T></h1><span><T>{"Escolha o painel para começar."}</T></span></div>
       <div className="hub-grid">
         {[...links].map((role) => (

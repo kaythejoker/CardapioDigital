@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BrandMark } from "@/components/brand-mark";
+import { MesaClickLogo } from "@/components/brand-mark";
 import { LanguageSwitcher, useI18n } from "@/components/i18n";
 import { msg } from "@/lib/i18n";
 
@@ -14,13 +14,14 @@ export default function Login() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main className="panel-theme flex min-h-screen items-center justify-center p-6">
       <section className="w-full max-w-sm rounded-[28px] border bg-card p-8 shadow-sm">
-        <div className="mb-6 flex items-center justify-between">
-          <BrandMark className="text-primary" />
+        <div className="mb-2 flex justify-end">
           <LanguageSwitcher compact />
         </div>
-        <h1 className="font-heading text-3xl">{t("Bem-vindo à Comanda")}</h1>
+        <MesaClickLogo className="login-logo" priority />
+        <p className="login-tagline">{t("Seu atendimento em outro nível.")}</p>
+        <h1 className="mt-8 font-heading text-3xl">{t("Bem-vindo ao MesaClick")}</h1>
         <p className="mb-7 mt-3 text-muted-foreground">{t("Entre para cuidar de cada mesa.")}</p>
         <form
           className="space-y-5"

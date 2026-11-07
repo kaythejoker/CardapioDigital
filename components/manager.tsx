@@ -1,5 +1,5 @@
 "use client";
-import { publicMenuUrl, restaurantBrand } from "@/lib/restaurant-brand";
+import { publicMenuUrl } from "@/lib/restaurant-brand";
 import { MenuPhoto } from "@/components/menu-photo";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -215,7 +215,6 @@ export function Manager({ initialRestaurant }: { initialRestaurant?: string }) {
   };
   return (
     <AdminShell
-      brand={restaurantBrand(data.restaurant)}
       title={t(titles[view])}
       restaurant={{...data.restaurant, menuUrl: previewTable ? publicMenuUrl(data.restaurant.slug, previewTable.qr_token, data.menu_origin) : undefined}}
       views={views}

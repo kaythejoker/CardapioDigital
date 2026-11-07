@@ -101,7 +101,6 @@ export function Reseller() {
   const shown = data.restaurants.filter((r) => !statusFilter || statusOf(r.id) === statusFilter);
   return (
     <AdminShell
-      brand={data.reseller}
       title={
         view === "brand"
           ? t("Sua marca, em cada restaurante")

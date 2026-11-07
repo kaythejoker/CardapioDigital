@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Banknote,
@@ -23,9 +23,8 @@ import {
   UtensilsCrossed,
   Wine,
 } from "lucide-react";
-import { BrandMark } from "@/components/brand-mark";
+import { MesaClickLogo } from "@/components/brand-mark";
 import { HelpButton, type Support } from "@/components/support";
-import { brandForeground } from "@/lib/menu-types";
 import {
   defaultPermission,
   effectivePermissions,
@@ -59,7 +58,6 @@ export async function jsonRequest(url: string, body?: unknown) {
 }
 
 export function AdminShell({
-  brand,
   title,
   active,
   onNavigate,
@@ -70,7 +68,6 @@ export function AdminShell({
   support,
   features,
 }: {
-  brand: { brand_name: string; primary_color: string; logo_url: string | null };
   title: string;
   active: string;
   onNavigate: (view: string) => void;
@@ -123,34 +120,18 @@ export function AdminShell({
           { id: "settings", label: msg("Configurações"), icon: Settings },
         ]
   ).filter((n) => (!views?.length || views.includes(n.id)) && featureFor(n.id, features));
-  const style = {
-    "--brand": brand.primary_color,
-    "--brand-foreground": brandForeground(brand.primary_color),
-  } as CSSProperties;
   return (
     <main
-      style={style}
       data-view={active}
-      className="brand-scope admin-layout"
+      className="panel-theme brand-scope admin-layout"
     >
       <aside className="admin-sidebar">
         <div className="admin-brand">
-          {brand.logo_url ? (
-            <Image
-              src={brand.logo_url}
-              alt={brand.brand_name}
-              width={44}
-              height={44}
-              className="object-contain"
-            />
-          ) : (
-            <BrandMark className="text-primary" />
-          )}
+          {/* Painéis da equipe usam a marca MesaClick; a da revenda e a do
+              restaurante continuam no cardápio do cliente. */}
           <div>
-            <h1 className="font-heading text-2xl font-semibold">
-              {brand.brand_name}
-            </h1>
-            <p className="text-xs text-muted-foreground">{t("Mais tempo para o que importa.")}</p>
+            <MesaClickLogo className="admin-logo" priority />
+            <p className="admin-brand-tagline">{t("Seu atendimento em outro nível.")}</p>
           </div>
         </div>
         <p className="navigation-label">{revenda ? t("Administração") : t("Restaurante")}</p>

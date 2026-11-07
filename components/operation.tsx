@@ -1,8 +1,7 @@
 "use client";
-import { restaurantBrand } from "@/lib/restaurant-brand";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
   BellRing,
@@ -28,7 +27,6 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { isLate, sortQueue, type QueueSettings } from "@/lib/priority";
 import {
-  brandForeground,
   CANCEL_REASONS,
   money,
   type CustomerOrder,
@@ -49,6 +47,7 @@ import { AccessBanner, HelpButton } from "@/components/support";
 import { type Access } from "@/lib/features";
 import { formatTime, msg, type Translate } from "@/lib/i18n";
 import { LanguageSwitcher, useI18n } from "@/components/i18n";
+import { MesaClickLogo } from "@/components/brand-mark";
 import { WaitlistPanel, type WaitlistEntry } from "@/components/waitlist-panel";
 
 export type StaffOrder = CustomerOrder & {
@@ -364,7 +363,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
       ? data.orders.filter((o) => o.status === "pronto").length + data.calls.length
       : data.orders.filter((o) => ["recebido", "em_preparo"].includes(o.status) && (o.station ?? "cozinha") === station).length
     : 0;
-  useTabBadge(pendingCount, role === "garcom" ? t("Salão • Comanda") : role === "bar" ? t("Fila do bar • Comanda") : t("Fila da cozinha • Comanda"));
+  useTabBadge(pendingCount, role === "garcom" ? t("Salão • MesaClick") : role === "bar" ? t("Fila do bar • MesaClick") : t("Fila da cozinha • MesaClick"));
   /** Envia o comando e recarrega; devolve se deu certo. */
   const command = async (body: Record<string, unknown>) => {
     if (!data || busy) return false;
@@ -395,7 +394,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   };
   if (unauthorized)
     return (
-      <main className="p-8 text-center">
+      <main className="panel-theme p-8 text-center">
         <p>{t(error)}</p>
         <Link href="/app/login" className="mt-5 inline-block underline">
           {t("Entrar com minha conta")}
@@ -404,18 +403,13 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
     );
   if (!data)
     return (
-      <main className="p-8" role="status">
+      <main className="panel-theme p-8" role="status">
         {error ? t(error) : t("Preparando a operação…")}
         <button onClick={refresh} className="ml-4 underline">
           {t("Atualizar")}
         </button>
       </main>
     );
-  const brand = restaurantBrand(data.restaurant);
-  const style = {
-    "--brand": brand.primary_color,
-    "--brand-foreground": brandForeground(brand.primary_color),
-  } as CSSProperties;
   const activeOrders = data.orders.filter(
     (o) =>
       ["recebido", "em_preparo", "pronto"].includes(o.status) &&
@@ -486,10 +480,11 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   const persons = (n: number) => (n === 1 ? t("1 pessoa") : t("{n} pessoas", { n }));
   return (
     <main
-      style={style}
-      className={`${kitchenLike ? "dark kitchen-screen" : "waiter-screen"} ${role === "bar" ? "bar-screen" : ""} brand-scope min-h-screen bg-background text-foreground`}
+      className={`panel-theme ${kitchenLike ? "dark kitchen-screen" : "waiter-screen"} ${role === "bar" ? "bar-screen" : ""} brand-scope min-h-screen bg-background text-foreground`}
     >
       <header className="operation-header">
+        <div className="operation-brand">
+        <MesaClickLogo className="operation-logo" priority />
         <div className="flex items-center gap-3">
           {role === "cozinha" ? <Flame className="kitchen-flame" /> : role === "bar" ? <Wine className="kitchen-flame" /> : <UtensilsCrossed />}
           <div>
@@ -500,6 +495,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
               {role === "cozinha" ? t("Sabor no tempo certo.") : role === "bar" ? t("Bebidas na hora certa.") : <>{data.restaurant.name} • <span className="live-indicator" /> {t(connection)}</>}
             </p>
           </div>
+        </div>
         </div>
         <div className="operation-tools">
           {kitchenLike && <><span className="kitchen-mode"><Clock size={20}/>{t(MODE_LABELS[data.settings.mode])}</span><span className="kitchen-count"><ChefHat size={27}/><span><b>{t("{n} na fila", { n: queue.length })}</b><small>{t("Pedidos pendentes")}</small></span></span></>}
