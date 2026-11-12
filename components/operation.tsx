@@ -171,13 +171,19 @@ function BlockForm({ label, placeholder, busy, onConfirm, onCancel, t }: { label
   );
 }
 
-export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
+export function Operation({
+  role,
+  initialRestaurant,
+}: {
+  role: "cozinha" | "garcom" | "bar";
+  initialRestaurant?: string;
+}) {
   const router = useRouter();
   // Cozinha e bar são o mesmo painel (KDS) filtrado pelo setor.
   const kitchenLike = role !== "garcom";
   const station: Station = role === "bar" ? "bar" : "cozinha";
   const [data, setData] = useState<OperationData | null>(null);
-  const [restaurant, setRestaurant] = useState("");
+  const [restaurant, setRestaurant] = useState(initialRestaurant ?? "");
   const [error, setError] = useState("");
   const [unauthorized, setUnauthorized] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -532,6 +538,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
               onChange={(e) => {
                 setRestaurant(e.target.value);
                 setSelectedTable(null);
+                window.history.replaceState(null, "", `?restaurant_id=${e.target.value}`);
               }}
               className="rounded-xl border bg-card p-2"
             >

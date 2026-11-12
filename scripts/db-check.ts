@@ -1090,6 +1090,22 @@ async function main() {
   await db.query("update subscriptions set status='ativa', trial_ends_at=null, current_period_end=null where restaurant_id=$1", [arroba]);
   check("piloto fica ativo sem vencimento", (await db.query<{ a: { blocked: boolean; status: string } }>("select public.restaurant_access($1) as a", [arroba])).rows[0].a.status === "ativa");
 
+  // A revenda opera Salão, Cozinha e Bar dos restaurantes dela sem vínculo na equipe.
+  const arrobaOrder = (await db.query<{ id: string }>("select o.id from orders o join tabs t on t.id=o.tab_id where t.table_id=$1", [arrobaTable.id])).rows[0].id;
+  const arrobaTable2 = (await db.query<{ id: string }>("insert into tables(restaurant_id,label) values($1,'2') returning id", [arroba])).rows[0].id;
+  await asUser(users.gestorCantina, async () => {
+    check("gestor de outro restaurante não abre mesa do Arroba", (await fails("select public.open_table($1)", [arrobaTable2])) !== null);
+  });
+  await asUser(users.revenda, async () => {
+    check("revenda não é da equipe do Arroba", (await count("select 1 from restaurant_members where restaurant_id=$1 and user_id=$2", [arroba, users.revenda])) === 0);
+    check("revenda inicia o preparo (cozinha)", (await fails("update orders set status='em_preparo' where id=$1", [arrobaOrder])) === null);
+    check("revenda marca pronto (cozinha)", (await fails("update orders set status='pronto' where id=$1", [arrobaOrder])) === null);
+    check("revenda entrega o pedido (salão)", (await fails("update orders set status='entregue' where id=$1", [arrobaOrder])) === null);
+    const opened = await db.query<{ id: string }>("select id from public.open_table($1)", [arrobaTable2]);
+    check("revenda abre mesa (salão)", Boolean(opened.rows[0]?.id));
+    check("revenda fecha comanda sem consumo", (await fails("update tabs set status='closed' where id=$1", [opened.rows[0]?.id])) === null);
+  });
+
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTudo certo.");
   process.exitCode = failures ? 1 : 0;
 }

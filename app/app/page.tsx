@@ -38,7 +38,11 @@ async function Home() {
     if (roles.includes("kitchen")) links.add("cozinha");
     if (roles.includes("bar")) links.add("bar");
   }
-  if (resellers.data?.length) links.add("revenda");
+  if (resellers.data?.length) {
+    // A revenda opera todos os restaurantes dela.
+    for (const role of ["gestor", "garcom", "cozinha", "bar"]) links.add(role);
+    links.add("revenda");
+  }
   return (
     <main className="panel-theme operations-hub">
       <header className="hub-brand"><MesaClickLogo className="hub-logo" priority /><small>{user.email}</small><LanguageSwitcher compact className="hub-language" /></header>

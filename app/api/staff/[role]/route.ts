@@ -12,20 +12,50 @@ const PANEL_ROLES: Record<z.infer<typeof roles>, string[]> = {
   bar: ["bar", "manager"],
   gestor: ["manager"],
 };
+const RESTAURANT_FIELDS =
+  "id,name,slug,primary_color,service_fee_percent,service_fee_optional,orders_paused,orders_paused_reason,resellers(brand_name,primary_color,logo_url,support_whatsapp,support_email,support_hours)";
 async function access(role: z.infer<typeof roles>, restaurantId: string | null) {
   const db = await createClient();
   const {
     data: { user },
   } = await db.auth.getUser();
   if (!user) return null;
-  const { data: memberships } = await db
-    .from("restaurant_members")
-    .select(
-      "restaurant_id,roles,permissions,restaurants(id,name,slug,primary_color,service_fee_percent,service_fee_optional,orders_paused,orders_paused_reason,resellers(brand_name,primary_color,logo_url,support_whatsapp,support_email,support_hours))",
-    )
-    .eq("user_id", user.id)
-    .eq("active", true)
-    .overlaps("roles", PANEL_ROLES[role]);
+  const [{ data: staff }, { data: resellerLinks }] = await Promise.all([
+    db
+      .from("restaurant_members")
+      .select(`restaurant_id,roles,permissions,restaurants(${RESTAURANT_FIELDS})`)
+      .eq("user_id", user.id)
+      .eq("active", true)
+      .overlaps("roles", PANEL_ROLES[role]),
+    db.from("reseller_members").select("reseller_id").eq("user_id", user.id),
+  ]);
+  let memberships = staff ?? [];
+  // A revenda opera todos os restaurantes ativos dela como gestor, com ou sem
+  // vínculo na equipe (o banco aceita pela private.is_member).
+  if (resellerLinks?.length) {
+    const { data: owned } = await db
+      .from("restaurants")
+      .select(RESTAURANT_FIELDS)
+      .in("reseller_id", resellerLinks.map((r) => r.reseller_id))
+      .eq("status", "active")
+      .order("name");
+    const ownedIds = new Set((owned ?? []).map((r) => r.id));
+    memberships = memberships.map((m) =>
+      ownedIds.has(m.restaurant_id)
+        ? { ...m, roles: [...new Set([...(m.roles ?? []), "manager"])], permissions: null }
+        : m,
+    );
+    const linked = new Set(memberships.map((m) => m.restaurant_id));
+    for (const r of owned ?? [])
+      if (!linked.has(r.id))
+        memberships.push({
+          restaurant_id: r.id,
+          roles: ["manager"],
+          permissions: null,
+          // Sem tipos gerados, o embed vem tipado como lista; em execução é o objeto.
+          restaurants: r as unknown as (typeof memberships)[number]["restaurants"],
+        });
+  }
   const member = restaurantId
     ? memberships?.find((m) => m.restaurant_id === restaurantId)
     : memberships?.[0];

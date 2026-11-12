@@ -16,6 +16,8 @@ Lembrete do usuário: o PIN só é pedido quando o cliente já montou o carrinho
 5. **Plural no Salão** — feito: "1 pedido pronto" e "1 pedido na comanda".
 6. **Divisão da conta depois de pagar a mesa inteira** — feito. Com a comanda quitada, cada pessoa aparece como "Pago" (Salão e celular), sem o botão "Registrar pagamento", e o aviso de fechamento não lista ninguém como devendo.
 
+7. **Revenda com acesso a tudo** — pedido do usuário em 12/11. A conta da revenda opera Salão, Cozinha e Bar de todos os restaurantes ativos dela, sem precisar entrar na equipe: o banco passa a tratar a revenda como equipe completa (`private.is_member`, migration `20261112120000_revenda_opera_restaurantes.sql`) e os painéis mostram o seletor de restaurante (também aceitam `?restaurant_id=`). O gestor lista os restaurantes da revenda no seletor. Precisa da migration aplicada em produção antes do push.
+
 ## Verificação
 
 Typecheck, lint, 30 testes unitários e build. Telas conferidas numa prévia local com os dados reais do cardápio do Arroba (comanda, conta pedida, mesa paga, Salão com plural e divisão). O som não foi ouvido aqui: conferir no próximo teste em produção.
