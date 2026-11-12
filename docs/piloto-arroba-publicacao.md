@@ -51,7 +51,7 @@ Validação feita aqui: typecheck, lint, build, 30 testes unitários e `npm run 
 
    O script imprime as URLs dos QR codes das mesas 1 e 2.
 
-5. Publicar: o push na `main` já publica os dois projetos Vercel (`cardapio-digital` e `cardapio-cliente`), que estão ligados ao GitHub.
+5. Publicar pela Vercel CLI nos dois projetos (`cardapio-digital` e `cardapio-cliente`). O push na `main` não publica sozinho.
 
 6. Teste rápido em produção:
    - Gestor do Arroba → Mesas e QR: baixar o PDF dos QR codes.

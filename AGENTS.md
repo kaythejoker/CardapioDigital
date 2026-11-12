@@ -20,7 +20,7 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 - Textos de tela passam por `t("frase em português")` (`useI18n`, `<T>` em server component, `msg()` para constantes) e precisam de inglês e espanhol em `lib/i18n-dict.ts`; `npm test` falha se faltar. `npx tsx tests/i18n-keys.ts` lista o que falta.
 - **Marca MesaClick nos painéis** (07/11/2026): gestor, revenda, salão, cozinha, bar, login, hub e convite usam a logo de `public/brand/` e a paleta azul da MesaClick, ligada pela classe `.panel-theme` na raiz da página. O cardápio do cliente segue com as cores e a logo do restaurante e da revenda. Cores fixas de `product.css`/`panels.css` são convertidas em `app/panel-theme.generated.css`: depois de mexer nesses dois arquivos, rode `npm run theme:panels` (o `npm test` acusa se esquecer). Ajustes feitos à mão vão em `app/panel-brand.css`.
 - Não implementar nada fora do escopo do MVP sem perguntar. Se algo estiver ambíguo, perguntar antes de decidir.
-- Toda a interface e a comunicação com o usuário são em **português do Brasil**.
+- Toda a interface e a comunicação com o usuário são em **português do Brasil**. Isso vale para **tudo o que aparece no CLI**: respostas, avisos de andamento, perguntas, opções de escolha, lista de tarefas e caixa de próximo passo. Nunca escrever em inglês com o usuário, nem em mensagem curta; ele já pediu isso muitas vezes.
 - Valores em centavos (inteiros), moeda BRL, fuso `America/Sao_Paulo`.
 
 ## Piloto Arroba Experience (2026-11-12)
@@ -53,7 +53,7 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 ## Decisões
 
 - **Supabase:** projeto na nuvem `yekmailbymutimhmddzx`. A máquina não tem Docker, então não há Supabase local.
-- **Vercel:** `nutrivox/cardapio-digital` (equipe) e `nutrivox/cardapio-cliente` (cliente), funções em São Paulo, variáveis configuradas. **Desde 2026-11-12 os dois projetos estão ligados ao GitHub** (`kaythejoker/CardapioDigital`, branch `main`): cada push na `main` publica os dois sozinhos, então não faça mais deploy pela pasta local. Commit e push só quando o usuário pedir, porque push na `main` vai direto para produção.
+- **Vercel:** `nutrivox/cardapio-digital` (equipe) e `nutrivox/cardapio-cliente` (cliente), funções em São Paulo, variáveis configuradas. **A publicação é só pela Vercel CLI**, feita no PC que tem acesso ao time `nutrivox`: o push na `main` **não** publica (em 12/11/2026 o push `82b80a4` ficou parado até o usuário publicar pela CLI). Depois do push, avise que falta publicar pela Vercel CLI nos dois projetos. Commit e push só quando o usuário pedir.
 - **Equipe:** o usuário escolheu senha inicial por enquanto; SMTP e entrega de convites por e-mail ficam adiados. Senha demo somente no `.env.local` ignorado.
 - **Perguntas em aberto da spec** (marca do Felipe, bar separado da cozinha, taxa de 10%, mais de uma comanda por mesa, acesso do garçom, quem monta o cardápio, domínio): por enquanto seguimos o modelo de dados do Prompt 1. Quando o Felipe responder, os ajustes entram como migrations novas.
 
