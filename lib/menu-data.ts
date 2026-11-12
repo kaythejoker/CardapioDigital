@@ -182,3 +182,15 @@ export async function loadMenu(
     })),
   };
 }
+
+/** Nome do restaurante para o título da aba do cardápio do cliente. */
+export async function restaurantName(slug: string): Promise<string | null> {
+  if (!/^[a-z0-9-]+$/.test(slug)) return null;
+  const { data } = await createAdminClient()
+    .from("restaurants")
+    .select("name")
+    .eq("slug", slug)
+    .eq("status", "active")
+    .maybeSingle();
+  return data?.name ?? null;
+}

@@ -1277,7 +1277,8 @@ export function Menu({
           aria-label={selected.name}
         >
           <div className="mx-auto max-w-xl pb-28">
-            <div className="relative h-72 bg-secondary">
+            {/* Sem foto, a faixa só segura o botão de voltar (não fica meia tela vazia). */}
+            <div className="relative h-72 bg-secondary" style={selected.photo_url ? undefined : { height: 96 }}>
               {selected.photo_url && (
                 <MenuPhoto slug={slug} detail
                   src={selected.photo_url}
