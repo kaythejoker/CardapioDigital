@@ -5,7 +5,9 @@
 - Mapa do salão com as cores pedidas pelos sócios (`lib/table-state.ts`): verde livre, vermelho ocupada, laranja em fechamento (chamada "conta" aberta), azul com 10 min sem pedido; legenda e filtro "Fechamento". Atraso e chamada viram selo e anel por cima da cor. Cores e legenda em `app/panel-brand.css`, fora do gerador de tema.
 - `npm run pilot:arroba` cria o restaurante, logo, cores, 125 itens em 16 categorias e 2 mesas; assinatura ativa sem vencimento; tudo na fila da cozinha. Idempotente.
 - Validação: typecheck, lint, build, 30 unitários, `db:check` com 312 verificações (novas: cardápio do Arroba, pedido com adicional, acesso do piloto). Mapa conferido no navegador com dados simulados.
-- **Não publicado:** feito num PC sem credenciais. Passos em `docs/piloto-arroba-publicacao.md`.
+- **Publicado em 12/11** (PC com credenciais, autorizado pelo usuário): `npm run pilot:arroba` criou o restaurante em produção (125 itens, 2 mesas) e gravou o WhatsApp do suporte (`5531984131529`) na revenda do `brasa-demo`; deploy nos dois projetos Vercel (`cardapio-digital` e `cardapio-cliente`). Gestor do Arroba ainda não criado (faltam `ARROBA_MANAGER_*`). Teste rápido em produção (passo 6 do guia) ainda não feito.
+- QR das mesas: https://cardapio-cliente-three.vercel.app/arroba-experience/m/bac028c164204e928023b0d6fa826929 (mesa 1) e https://cardapio-cliente-three.vercel.app/arroba-experience/m/e613078c9b5e4e08aebb6a5800c5abce (mesa 2).
+- `npm test` neste PC: `panel-theme` falha só por CRLF no checkout do Windows (`app/panels.css` com `core.autocrlf=true`); no repositório (LF) passa.
 
 ## Fase 3 (spec-fase3.md) — implementada em 26/10/2026, publicada em 27/10/2026
 

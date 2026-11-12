@@ -25,7 +25,7 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 
 ## Piloto Arroba Experience (2026-11-12)
 
-- **Primeiro restaurante real:** Arroba Experience (`arroba-experience`, 2 mesas). Mapa do salão com as cores dos sócios e script `npm run pilot:arroba` prontos e validados localmente, **ainda não publicados**. Siga [docs/piloto-arroba-publicacao.md](docs/piloto-arroba-publicacao.md) antes de qualquer outra coisa.
+- **Primeiro restaurante real:** Arroba Experience (`arroba-experience`, 2 mesas). Mapa do salão com as cores dos sócios e script `npm run pilot:arroba` **publicados em 2026-11-12**: restaurante criado no Supabase de produção (`npm run pilot:arroba`, já rodado: não precisa rodar de novo) e deploy nos dois projetos Vercel. Pendências com os sócios e teste em produção em [docs/piloto-arroba-publicacao.md](docs/piloto-arroba-publicacao.md).
 
 ## Estado atual (2026-10-13)
 
