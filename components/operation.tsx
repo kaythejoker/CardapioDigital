@@ -468,7 +468,6 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   const tableOrders = data.orders.filter((o) => o.tab_id === tab?.id);
   const tableGuests = data.guests.filter((g) => g.tab_id === tab?.id);
   const split = splitTab(tableGuests, tableOrders);
-  const unpaid = split.people.filter((p) => !p.settled && p.balance_cents > 0);
   const tabPayments = data.payments.filter((p) => p.tab_id === tab?.id);
   // Espelho de public.tab_totals: itens ativos + taxa (se não retirada) - desconto.
   const totals: TabTotals = (() => {
@@ -481,6 +480,10 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
     const paid = tabPayments.reduce((sum, p) => sum + p.amount_cents, 0);
     return { items_cents: items, fee_cents: fee, fee_percent: pct, fee_waived: waived, discount_cents: discount, discount_reason: tab?.discount_reason ?? null, due_cents: due, paid_cents: paid, balance_cents: due - paid };
   })();
+  // Pagamento lançado para a mesa inteira quita a parte de cada pessoa.
+  const tabPaid = totals.due_cents > 0 && totals.balance_cents <= 0;
+  const personSettled = (p: { settled: boolean }) => p.settled || tabPaid;
+  const unpaid = split.people.filter((p) => !personSettled(p) && p.balance_cents > 0);
   const actionStyle =
     "rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground disabled:opacity-50";
   // Pausa e bloqueio (spec-fase3.md, seção 2): permissão block_orders + módulo.
@@ -710,7 +713,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                 className="flex items-center gap-2 rounded-full bg-[#2F7D5B] px-4 py-2 text-sm text-white"
               >
                 <Bell size={16} />
-                {t("{n} pedidos prontos", { n: ready.length })}
+                {ready.length === 1 ? t("1 pedido pronto") : t("{n} pedidos prontos", { n: ready.length })}
               </span>
             </div>
           </div>
@@ -1074,7 +1077,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     )}
                   </div>
                 )}
-                <div className="table-order-summary"><span>{t("{n} pedidos na comanda", { n: tableOrders.filter(o => o.status !== "cancelado").length })}</span><button onClick={() => setShowOrders(v => !v)}>{showOrders ? t("Recolher pedidos") : t("Ver pedidos")}</button></div>
+                <div className="table-order-summary"><span>{(() => { const n = tableOrders.filter(o => o.status !== "cancelado").length; return n === 1 ? t("1 pedido na comanda") : t("{n} pedidos na comanda", { n }); })()}</span><button onClick={() => setShowOrders(v => !v)}>{showOrders ? t("Recolher pedidos") : t("Ver pedidos")}</button></div>
                 <div className="mt-5 space-y-4">
                   {tableOrders.filter(o => showOrders || o.status === "pronto").map((o) => (
                     <article key={o.id} className="rounded-2xl border p-4">
@@ -1189,15 +1192,15 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                               {person.shared_cents > 0 &&
                                 `${t("Inclui {value} dividido.", { value: money(person.shared_cents) })} `}
                               {person.paid_cents !== null &&
-                                !person.settled &&
+                                !personSettled(person) &&
                                 t("Já pagou {value}.", { value: money(person.paid_cents) })}
                             </small>
                           </div>
                           <span className="table-split-amount">
-                            {money(person.settled ? person.due_cents : person.balance_cents)}
+                            {money(personSettled(person) ? person.due_cents : person.balance_cents)}
                           </span>
                           {guestId && data.can.register_payment &&
-                            (person.settled ? (
+                            (personSettled(person) ? (
                               <span className="table-split-done">
                                 <span className="table-split-badge">
                                   <Check size={14} /> {t("Pago")}

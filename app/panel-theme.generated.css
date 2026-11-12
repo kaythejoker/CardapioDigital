@@ -437,6 +437,12 @@ body:has(.panel-theme) :is(.waitlist-card.called .waitlist-status) {background:v
 body:has(.panel-theme) :is(.waitlist-card.called .waitlist-status small) {color:inherit
 }
 body:has(.panel-theme) :is(.waitlist-footer) {color:#868f9c
+}
+body:has(.panel-theme) :is(.tab-fab) {background:color-mix(in srgb,var(--brand) 91%,#133971);color:#fff;border-color:transparent
+}
+body:has(.panel-theme) :is(.tab-total-bar .tab-bill) {background:color-mix(in srgb,var(--brand) 91%,#133971);color:#fff;border-color:transparent
+}
+body:has(.panel-theme) :is(.tab-bill-note) {background:#e5e9f0;color:#334f7a
 }/*  app/panels.css  */
 body:has(.panel-theme) :is(.admin-layout) {
   --panel-ink: #1f2937;

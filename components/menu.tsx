@@ -23,6 +23,7 @@ import {
   Minus,
   PauseCircle,
   Plus,
+  ReceiptText,
   Search,
   ShoppingBag,
   UtensilsCrossed,
@@ -483,6 +484,7 @@ export function Menu({
   const primary =
     "rounded-[14px] bg-primary px-5 py-4 font-semibold text-primary-foreground disabled:opacity-50";
   const myCalls = (menu.calls ?? []).filter((c) => c.mine);
+  const billAsked = myCalls.some((c) => c.kind === "conta");
   const callWaiter = (kind: ServiceCallKind, note?: string) =>
     run(async () => {
       await post({ action: "call", kind, note });
@@ -784,15 +786,13 @@ export function Menu({
               {t("Por {brand}", { brand: brand.brand_name })}
             </footer>
           </div>
-          {menu.authorized && (
-            <button
-              className="mx-5 my-3 flex items-center gap-2 underline"
-              onClick={() => setScreen("tab")}
-            >
-              <UtensilsCrossed size={18} /> {t("Minha comanda")}
-            </button>
-          )}
           {!(menu.survey && !surveyDismissed && !menu.open) && !menu.suspended && !consult && <div className={`call-fab-wrap ${cart.length > 0 && menu.open ? "with-cart" : ""}`}>
+            {menu.authorized && (
+              <button className="call-fab tab-fab" onClick={() => setScreen("tab")}>
+                <ReceiptText size={18} />
+                {t("Minha comanda")}
+              </button>
+            )}
             <button
               className="call-fab"
               disabled={busy}
@@ -1121,7 +1121,7 @@ export function Menu({
                 </div>
                 <div>
                   <b>{money(person.due_cents)}</b>
-                  {person.settled ? (
+                  {person.settled || (totals && totals.due_cents > 0 && totals.balance_cents <= 0) ? (
                     <span className="tab-person-status paid">{t("Pago")}</span>
                   ) : person.paid_cents !== null ? (
                     <span className="tab-person-status due">{t("Falta {value}", { value: money(person.balance_cents) })}</span>
@@ -1261,12 +1261,16 @@ export function Menu({
                   ? t("Atualizado agora")
                   : t("Atualizado há {n} s", { n: Math.round((now - updatedAt) / 1000) })}
           </p>
-          <div className="tab-total-bar"><div><span>{t("Sua parte")}</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>
+          {billAsked && <p className="tab-bill-note" role="status">{CALL_DONE.conta}</p>}<div className="tab-total-bar"><div><span>{t("Sua parte")}</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>
             {t("Total da mesa: {value}", { value: money(totals?.due_cents ?? split.total_cents) })}
             {totals && totals.fee_cents > 0 && ` • ${t("inclui {n}% de serviço", { n: totals.fee_percent })}`}
             {totals && totals.discount_cents > 0 && ` • ${t("desconto de {value}", { value: money(totals.discount_cents) })}`}
             {totals && totals.paid_cents > 0 && ` • ${t("pago {value}", { value: money(totals.paid_cents) })}`}
-          </small></div><button onClick={back}><Plus size={17}/> {t("Pedir mais")}</button></div>
+          </small></div><div className="tab-total-actions"><button
+            className="tab-bill"
+            disabled={busy || billAsked || !menu.open || (!!totals && totals.due_cents > 0 && totals.balance_cents <= 0)}
+            onClick={() => void callWaiter("conta")}
+          ><ReceiptText size={17}/> {billAsked ? t("Conta pedida") : t("Pedir a conta")}</button><button onClick={back}><Plus size={17}/> {t("Pedir mais")}</button></div></div>
         </section>
       )}
       {selected && (

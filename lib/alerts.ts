@@ -3,18 +3,22 @@
 // sintetizados no navegador, sem arquivos; só tocam depois de um toque do
 // usuário ("Ativar som"), guardado por aparelho.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export type AlertKind = "new" | "ready" | "call" | "late";
 const STORAGE = "comanda:som";
 
-// Sequências curtas [frequência Hz, duração s]; cada evento toca uma vez.
-const TONES: Record<AlertKind, [number, number][]> = {
-  new: [[880, 0.12], [1175, 0.18]],
-  ready: [[988, 0.1], [1319, 0.1], [1568, 0.2]],
-  call: [[660, 0.15], [660, 0.15], [660, 0.25]],
-  late: [[440, 0.3], [349, 0.35]],
+// Cada evento é um motivo [frequência Hz, duração s] repetido até `seconds`:
+// pedido novo, pronto e chamada tocam por ~10 s para quem está no salão
+// ouvir (piloto Arroba, 12/11/2026); atraso toca uma vez. Um toque na tela
+// interrompe o som.
+const TONES: Record<AlertKind, { motif: [number, number][]; pause: number; seconds: number }> = {
+  new: { motif: [[880, 0.16], [1175, 0.24]], pause: 0.5, seconds: 10 },
+  ready: { motif: [[988, 0.12], [1319, 0.12], [1568, 0.24]], pause: 0.5, seconds: 10 },
+  call: { motif: [[660, 0.28], [880, 0.28]], pause: 0.35, seconds: 10 },
+  late: { motif: [[440, 0.3], [349, 0.35]], pause: 0, seconds: 0 },
 };
+const VOLUME = 0.8;
 const VIBRATION: Record<AlertKind, number[]> = {
   new: [120],
   ready: [200, 100, 200],
@@ -25,23 +29,48 @@ const VIBRATION: Record<AlertKind, number[]> = {
 type AudioCtx = AudioContext;
 let context: AudioCtx | null = null;
 
-function playTones(kind: AlertKind) {
-  if (!context) return;
-  const now = context.currentTime;
-  let at = now;
-  for (const [frequency, duration] of TONES[kind]) {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = kind === "late" ? "triangle" : "sine";
-    oscillator.frequency.value = frequency;
-    gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(0.35, at + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(at);
-    oscillator.stop(at + duration + 0.02);
-    at += duration + 0.05;
+let ringing: OscillatorNode[] = [];
+
+/** Para o som que estiver tocando (toque na tela ou novo alerta). */
+export function stopAlertSound() {
+  for (const o of ringing) {
+    try {
+      o.stop();
+    } catch {
+      /* já parou */
+    }
   }
+  ringing = [];
+}
+
+function playTones(kind: AlertKind, once = false) {
+  if (!context) return;
+  // Atraso não corta uma chamada ou um pedido novo que ainda está tocando.
+  if (kind === "late" && ringing.length) return;
+  stopAlertSound();
+  const { motif, pause, seconds } = TONES[kind];
+  const end = context.currentTime + (once ? 0 : seconds);
+  let at = context.currentTime;
+  do {
+    for (const [frequency, duration] of motif) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = kind === "late" ? "triangle" : "sine";
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(VOLUME, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(at);
+      oscillator.stop(at + duration + 0.02);
+      oscillator.onended = () => {
+        ringing = ringing.filter((o) => o !== oscillator);
+      };
+      ringing.push(oscillator);
+      at += duration + 0.05;
+    }
+    at += pause;
+  } while (at < end);
 }
 
 export function vibrate(kind: AlertKind) {
@@ -52,10 +81,7 @@ export function vibrate(kind: AlertKind) {
   }
 }
 
-/**
- * Estado do som por aparelho. `play` toca uma vez; se a aba estiver em segundo
- * plano o aviso fica pendente e toca uma única vez ao voltar.
- */
+/** Estado do som por aparelho. `play` toca o alerta do evento (veja TONES). */
 export function useAlerts() {
   // O botão só aparece depois que o painel carrega no cliente, então ler a
   // preferência na inicialização não causa diferença com o HTML do servidor.
@@ -66,7 +92,6 @@ export function useAlerts() {
       return false;
     }
   });
-  const pending = useRef<Set<AlertKind>>(new Set());
   const ensureContext = useCallback(() => {
     if (typeof window === "undefined" || !("AudioContext" in window)) return false;
     context ??= new AudioContext();
@@ -81,7 +106,7 @@ export function useAlerts() {
     } catch {
       /* ignorado */
     }
-    if (ok) playTones("new");
+    if (ok) playTones("new", true);
   }, [ensureContext]);
   const disable = useCallback(() => {
     setEnabled(false);
@@ -91,31 +116,24 @@ export function useAlerts() {
       /* ignorado */
     }
   }, []);
+  // Toca na hora, mesmo com a aba em segundo plano: o tablet do salão nem
+  // sempre está com o painel na frente.
   const play = useCallback(
     (kind: AlertKind) => {
       vibrate(kind);
-      if (!enabled) return;
-      if (document.hidden) {
-        pending.current.add(kind);
-        return;
-      }
-      if (ensureContext()) playTones(kind);
+      if (enabled && ensureContext()) playTones(kind);
     },
     [enabled, ensureContext],
   );
   useEffect(() => {
-    const onVisible = () => {
-      if (document.hidden || !pending.current.size) return;
-      const kinds = [...pending.current];
-      pending.current.clear();
-      if (!enabled || !ensureContext()) return;
-      // Um toque só ao voltar, do evento mais importante.
-      const order: AlertKind[] = ["call", "ready", "late", "new"];
-      playTones(order.find((k) => kinds.includes(k)) ?? kinds[0]);
+    const stop = () => stopAlertSound();
+    window.addEventListener("pointerdown", stop);
+    window.addEventListener("keydown", stop);
+    return () => {
+      window.removeEventListener("pointerdown", stop);
+      window.removeEventListener("keydown", stop);
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [enabled, ensureContext]);
+  }, []);
   return { enabled, enable, disable, play };
 }
 
