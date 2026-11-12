@@ -61,6 +61,20 @@ Validação feita aqui: typecheck, lint, build, 30 testes unitários e `npm run 
    - Salão: registrar pagamento e fechar → mesas verdes, PIN não vale mais.
    - Mesa aberta 10 minutos sem pedido → azul.
 
+## Domínios do Arroba (12/11/2026)
+
+- **Cardápio do cliente:** `arroba.nutrivox.com.br` → projeto `cardapio-cliente`. A raiz abre o cardápio para consulta e `/m/{qr}` abre a mesa. Está cadastrado no restaurante (`custom_domain`). Como o `VERCEL_TOKEN` não está configurado, o status fica "pendente" até alguém marcar "active" no banco, depois que o domínio abrir com HTTPS. Com o status ativo, os QR codes passam a usar o domínio.
+- **Painéis da equipe:** `gestor.arroba.nutrivox.com.br` → projeto `cardapio-digital`. A raiz manda para `/app` (login e painéis).
+- **DNS na HostGator** (cPanel → Editor de zona DNS de `nutrivox.com.br`): CNAME `arroba` e CNAME `gestor.arroba`, os dois apontando para `cname.vercel-dns.com`.
+- **Na Vercel**, pela CLI:
+
+  ```bash
+  vercel domains add arroba.nutrivox.com.br cardapio-cliente --scope nutrivox
+  ```
+  ```bash
+  vercel domains add gestor.arroba.nutrivox.com.br cardapio-digital --scope nutrivox
+  ```
+
 ## Pendências com os sócios
 
 - Número do WhatsApp do suporte e e-mail do gestor do Arroba.

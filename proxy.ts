@@ -71,6 +71,9 @@ export async function proxy(request: NextRequest) {
   }
   if (mode === "customer" && /^\/api\/(auth|manage|staff|team|revenda|upload|qr|history|reports|domains)(\/|$)/.test(path)) return new NextResponse(null, {status:404});
   if (mode === "admin" && /^\/[^/]+\/(m\/[^/]+|consulta|espera\/[^/]+)$/.test(path)) return NextResponse.redirect(new URL(path + request.nextUrl.search, process.env.NEXT_PUBLIC_MENU_URL!));
+  // Projeto dos painéis: a raiz abre a entrada da equipe no mesmo domínio
+  // (ex.: gestor.arroba.nutrivox.com.br → /app).
+  if (mode === "admin" && path === "/") return NextResponse.redirect(new URL("/app", request.url));
   if (!path.startsWith("/app")) return NextResponse.next();
   let response = NextResponse.next({ request });
   const env = publicEnv();
