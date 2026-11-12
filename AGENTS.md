@@ -23,6 +23,10 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 - Toda a interface e a comunicação com o usuário são em **português do Brasil**.
 - Valores em centavos (inteiros), moeda BRL, fuso `America/Sao_Paulo`.
 
+## Piloto Arroba Experience (2026-11-12)
+
+- **Primeiro restaurante real:** Arroba Experience (`arroba-experience`, 2 mesas). Mapa do salão com as cores dos sócios e script `npm run pilot:arroba` prontos e validados localmente, **ainda não publicados**. Siga [docs/piloto-arroba-publicacao.md](docs/piloto-arroba-publicacao.md) antes de qualquer outra coisa.
+
 ## Estado atual (2026-10-13)
 
 - Implementação completa da V0 reunida no Git para sincronização entre máquinas: cliente, salão, cozinha, gestor, revenda, personalização, favicon, testes e migrations. O antigo commit `0343caa` continha apenas o setup; não representa o estado atual do produto.

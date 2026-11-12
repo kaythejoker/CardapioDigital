@@ -9,6 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
+import { ARROBA, ARROBA_MENU } from "./pilot/arroba-menu";
 
 const root = join(import.meta.dirname, "..");
 const migrationsDir = join(root, "supabase", "migrations");
@@ -1056,6 +1057,38 @@ async function main() {
     await db.query("select public.set_subscription($1, $2, 'ativa')", [BRASA, completo]);
     await db.query("update subscriptions set current_period_end=null where restaurant_id=$1", [BRASA]);
   });
+
+  // Cardápio do piloto Arroba Experience cabe nas regras do banco ------------
+  const arroba = (await db.query<{ id: string }>(
+    "insert into restaurants(reseller_id,name,slug,primary_color,background_color) values($1,$2,$3,$4,$5) returning id",
+    [RESELLER, ARROBA.name, ARROBA.slug, ARROBA.primary_color, ARROBA.background_color])).rows[0].id;
+  let arrobaItems = 0;
+  for (const [cPos, category] of ARROBA_MENU.entries()) {
+    const cid = (await db.query<{ id: string }>("insert into categories(restaurant_id,name,position) values($1,$2,$3) returning id", [arroba, category.name, cPos])).rows[0].id;
+    for (const [iPos, item] of category.items.entries()) {
+      const iid = (await db.query<{ id: string }>(
+        "insert into menu_items(restaurant_id,category_id,name,description,price_cents,prep_minutes,featured,position) values($1,$2,$3,$4,$5,$6,$7,$8) returning id",
+        [arroba, cid, item.name, item.description ?? null, item.price, item.prep, !!item.featured, iPos])).rows[0].id;
+      arrobaItems++;
+      for (const [gPos, g] of (item.groups ?? []).entries()) {
+        const gid = (await db.query<{ id: string }>("insert into modifier_groups(menu_item_id,name,required,min_select,max_select,position) values($1,$2,$3,$4,$5,$6) returning id", [iid, g.name, g.required, g.min, g.max, gPos])).rows[0].id;
+        for (const [mPos, [name, price]] of g.options.entries())
+          await db.query("insert into modifiers(group_id,name,price_cents,position) values($1,$2,$3,$4)", [gid, name, price, mPos]);
+      }
+    }
+  }
+  check("cardápio do Arroba entra completo no banco", arrobaItems === ARROBA_MENU.reduce((n, c) => n + c.items.length, 0));
+  const arrobaTable = (await db.query<{ id: string; qr_token: string }>("insert into tables(restaurant_id,label) values($1,'1') returning id,qr_token", [arroba])).rows[0];
+  await db.query("insert into tabs(restaurant_id,table_id,pin) values($1,$2,'5050')", [arroba, arrobaTable.id]);
+  await db.query("select public.verify_table_pin($1,$2,'5050','dev-arroba','hash-arroba','Teste')", [ARROBA.slug, arrobaTable.qr_token]);
+  const arrobaPicanha = (await db.query<{ id: string; turbo: string }>(
+    "select mi.id, m.id as turbo from menu_items mi join modifier_groups g on g.menu_item_id=mi.id join modifiers m on m.group_id=g.id where mi.restaurant_id=$1 and mi.name='Picanha premium' and m.name='Batata frita'", [arroba])).rows[0];
+  await db.query(
+    "select public.submit_table_order($1,$2,'hash-arroba','b0000000-0000-4000-8000-0000000000a1',$3::jsonb)",
+    [ARROBA.slug, arrobaTable.qr_token, JSON.stringify([{ item_id: arrobaPicanha.id, quantity: 1, note: "Mal passada", modifier_ids: [arrobaPicanha.turbo] }])]);
+  check("Picanha premium + Turbine (batata) soma R$ 152,80", (await count("select 1 from orders o join tabs t on t.id=o.tab_id where t.table_id=$1 and o.total_cents=15280", [arrobaTable.id])) === 1);
+  await db.query("update subscriptions set status='ativa', trial_ends_at=null, current_period_end=null where restaurant_id=$1", [arroba]);
+  check("piloto fica ativo sem vencimento", (await db.query<{ a: { blocked: boolean; status: string } }>("select public.restaurant_access($1) as a", [arroba])).rows[0].a.status === "ativa");
 
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTudo certo.");
   process.exitCode = failures ? 1 : 0;

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { isLate, sortQueue, type QueueSettings } from "@/lib/priority";
+import { lastActivity, tableState, type TableState } from "@/lib/table-state";
 import {
   CANCEL_REASONS,
   money,
@@ -131,6 +132,13 @@ const CALL_BADGES: Record<ServiceCallKind, string> = {
   garcom: msg("Chamando"),
   conta: msg("Pede a conta"),
   ajuda: msg("Precisa de ajuda"),
+};
+// Legenda do mapa (cores pedidas pelos sócios no piloto).
+const STATE_LABELS: Record<TableState, string> = {
+  free: msg("Livre"),
+  occupied: msg("Ocupada"),
+  closing: msg("Em fechamento"),
+  idle: msg("10 min sem pedido"),
 };
 const MODE_LABELS = { fifo: msg("Ordem de chegada"), complexity: msg("Complexidade"), balanced: msg("Equilibrado") } as const;
 const ORDER_STATUS: Record<StaffOrder["status"], string> = {
@@ -429,6 +437,9 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
   const tabForTable = (tableId: string) =>
     data.tabs.find((b) => b.table_id === tableId) ??
     data.tabs.find((b) => data.tab_tables.some((tt) => tt.tab_id === b.id && tt.table_id === tableId));
+  // Mesa em fechamento: alguém da comanda (ou da mesa) pediu a conta.
+  const billRequested = (tabId: string, tableId: string) =>
+    data.calls.some((c) => c.kind === "conta" && (c.tab_id === tabId || c.table_id === tableId));
   const mergedTables = (tabId: string) =>
     data.tab_tables
       .filter((tt) => tt.tab_id === tabId)
@@ -742,6 +753,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
               ["all", msg("Todas")],
               ["occupied", msg("Ocupadas")],
               ["free", msg("Livres")],
+              ["closing", msg("Fechamento")],
               ["ready", msg("Prontos")],
               ["calls", msg("Chamadas")],
             ].map(([value, label]) => (
@@ -786,6 +798,14 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
               )}
             </section>
           )}
+          <div className="table-state-legend" aria-label={t("Legenda das cores")}>
+            {(["free", "occupied", "closing", "idle"] as const).map((state) => (
+              <span key={state}>
+                <i className={`state-${state}`} />
+                {t(STATE_LABELS[state])}
+              </span>
+            ))}
+          </div>
           <div className="waiter-tables">
             {data.tables
               .filter((t) => t.active)
@@ -798,6 +818,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                 const hasCall = data.calls.some((c) => c.table_id === t.id);
                 return (
                   view === "all" ||
+                  (view === "closing" && tab && billRequested(tab.id, t.id)) ||
                   (view === "occupied" && tab) ||
                   (view === "free" && !tab) ||
                   (view === "ready" && hasReady) ||
@@ -813,6 +834,7 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                 const hasReady = orders.some((o) => o.status === "pronto");
                 const tableCalls = data.calls.filter((c) => c.table_id === t.id);
                 const hasLate = orders.some((o) => o.status !== "pronto" && isLate(o, now));
+                const state = tableState(tab, orders, now, !!tab && billRequested(tab.id, t.id));
                 return (
                   <button
                     key={t.id}
@@ -824,7 +846,8 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                       setMerging(false);
                       setBlocking(false);
                     }}
-                    className={`waiter-table ${hasReady ? "ready" : tab ? "occupied" : "free"} ${hasLate ? "late" : ""} ${tableCalls.length ? "calling" : ""} ${isMerged ? "merged" : ""}`}
+                    aria-label={`${tr("Mesa {label}", { label: t.label })}: ${tr(STATE_LABELS[state])}`}
+                    className={`waiter-table state-${state} ${hasReady ? "ready" : tab ? "occupied" : "free"} ${hasLate ? "late" : ""} ${tableCalls.length ? "calling" : ""} ${isMerged ? "merged" : ""}`}
                   >
                     <span className="text-sm text-muted-foreground">{tr("Mesa")}</span>
                     <h3 className="my-2 font-heading text-4xl">{t.label}</h3>
@@ -851,13 +874,9 @@ export function Operation({ role }: { role: "cozinha" | "garcom" | "bar" }) {
                     {tab ? (
                       <>
                         <p className="text-sm text-muted-foreground">
-                          {Math.max(
-                            0,
-                            Math.floor(
-                              (now - Date.parse(tab.opened_at)) / 60000,
-                            ),
-                          )}{" "}
-                          {tr("min")}
+                          {state === "idle"
+                            ? tr("{n} min sem pedir", { n: Math.floor((now - lastActivity(tab, data.orders)) / 60000) })
+                            : `${Math.max(0, Math.floor((now - Date.parse(tab.opened_at)) / 60000))} ${tr("min")}`}
                         </p>
                         {!isMerged && <b className="mt-2 block">
                           {money(

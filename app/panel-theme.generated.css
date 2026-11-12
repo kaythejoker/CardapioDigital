@@ -757,17 +757,9 @@ body:has(.panel-theme) :is(.kitchen-ticket.ticket-new) { border-color: #94a3ba
 }
 body:has(.panel-theme) :is(.call-counter) { background: #c94a2c; color: white
 }
-body:has(.panel-theme) :is(.waiter-table.late) { background: #f9ddd3; border-color: #d4664a; box-shadow: 0 0 0 3px #d4664a2e
-}
-body:has(.panel-theme) :is(.waiter-table.late h3) { color: #9c3420
+body:has(.panel-theme) :is(.waiter-table.late) { box-shadow: 0 0 0 3px #d4664a2e
 }
 body:has(.panel-theme) :is(.late-badge) { color: #fff; background: #c2492d
-}
-body:has(.panel-theme) :is(.waiter-table.calling) { background: #fdedc2; border-color: #d99a17
-}
-body:has(.panel-theme) :is(.waiter-table.calling h3) { color: #7a5106
-}
-body:has(.panel-theme) :is(.waiter-table.late.calling) { background: #f9ddd3
 }
 body:has(.panel-theme) :is(.call-badge) { color: #4a3203; background: #f5c242
 }

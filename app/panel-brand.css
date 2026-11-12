@@ -112,32 +112,14 @@ body:has(.panel-theme) .font-heading {
 .hub-logo { width: 168px; }
 .login-logo { width: 240px; margin: 0 auto; }
 
-/* Salão: livre em branco, ocupada em azul claro. Atraso e chamada (panels.css)
-   continuam por cima, porque as regras geradas vêm antes deste arquivo e as
-   de estado têm mais classes. */
-body:has(.panel-theme) .waiter-table {
-  background: #e8f0fe;
-  border-color: #b8cdf3;
-}
-body:has(.panel-theme) .waiter-table.free {
-  background: #ffffff;
-  border-color: var(--line);
-}
-body:has(.panel-theme) .waiter-table.ready {
-  background: #e1edda;
-  border-color: #9db990;
-}
-body:has(.panel-theme) .waiter-table.late {
-  background: #f9ddd3;
-  border-color: #d4664a;
-}
-body:has(.panel-theme) .waiter-table.calling {
-  background: #fdedc2;
-  border-color: #d99a17;
-}
-body:has(.panel-theme) .waiter-table.late.calling {
-  background: #f9ddd3;
-}
+/* Salão: cores pedidas pelos sócios no piloto (lib/table-state.ts).
+   Verde livre, vermelho ocupada, laranja em fechamento (pediu a conta) e azul
+   com 10 minutos sem pedido. Atraso e chamada viram selo e anel por cima. */
+body:has(.panel-theme) .waiter-table { border-width: 2px; }
+body:has(.panel-theme) .waiter-table.state-free { background: #e6f4e8; border-color: #2f8f4e; }
+body:has(.panel-theme) .waiter-table.state-occupied { background: #fbe4e0; border-color: #c8412f; }
+body:has(.panel-theme) .waiter-table.state-closing { background: #fdecd6; border-color: #e07b12; }
+body:has(.panel-theme) .waiter-table.state-idle { background: #e2ecfb; border-color: #2f6fd0; }
 
 /* Cabeçalho do salão, cozinha e bar: logo acima da saudação. */
 .operation-brand {
@@ -158,4 +140,19 @@ body:has(.panel-theme) .waiter-table.late.calling {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted-text);
+}
+
+/* Legenda das cores do mapa do salão (fica aqui para o gerador de tema não
+   trocar o laranja e o verde pela paleta azul dos painéis). */
+.table-state-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: -8px 0 16px; font-size: 12px; color: #5f6875; }
+.table-state-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.table-state-legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.table-state-legend i.state-free { background: #2f8f4e; }
+.table-state-legend i.state-occupied { background: #c8412f; }
+.table-state-legend i.state-closing { background: #e07b12; }
+.table-state-legend i.state-idle { background: #2f6fd0; }
+/* Filtros do salão rolam de lado no celular em vez de alargar a página. */
+@media (max-width: 599px) {
+  .waiter-screen section > nav { overflow-x: auto; scrollbar-width: none; }
+  .waiter-screen section > nav > button { flex-shrink: 0; white-space: nowrap; }
 }

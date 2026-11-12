@@ -1,5 +1,12 @@
 # Progresso do MVP — atualizado em 2026-10-26
 
+## Piloto MesaClick no Arroba Experience — 2026-11-12
+
+- Mapa do salão com as cores pedidas pelos sócios (`lib/table-state.ts`): verde livre, vermelho ocupada, laranja em fechamento (chamada "conta" aberta), azul com 10 min sem pedido; legenda e filtro "Fechamento". Atraso e chamada viram selo e anel por cima da cor. Cores e legenda em `app/panel-brand.css`, fora do gerador de tema.
+- `npm run pilot:arroba` cria o restaurante, logo, cores, 125 itens em 16 categorias e 2 mesas; assinatura ativa sem vencimento; tudo na fila da cozinha. Idempotente.
+- Validação: typecheck, lint, build, 30 unitários, `db:check` com 312 verificações (novas: cardápio do Arroba, pedido com adicional, acesso do piloto). Mapa conferido no navegador com dados simulados.
+- **Não publicado:** feito num PC sem credenciais. Passos em `docs/piloto-arroba-publicacao.md`.
+
 ## Fase 3 (spec-fase3.md) — implementada em 26/10/2026, publicada em 27/10/2026
 
 Pedido do usuário: lista de espera com número de ordem, bloquear pedidos e pratos, interface em português, inglês e espanhol, e (para os testes) PIN da mesa opcional. Tudo por módulo de plano (`waitlist`, `order_blocks`, `languages`), ligado para os restaurantes que já existem.

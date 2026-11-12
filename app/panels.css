@@ -221,14 +221,11 @@
 @keyframes ticket-pop { 0% { box-shadow: 0 0 0 0 #e0b26e80; transform: translateY(-4px); } 100% { box-shadow: 0 5px 15px #0002; transform: none; } }
 .kitchen-ticket.ticket-new { border-color: #e0b26e; animation: ticket-pop 1.2s ease-out 3; }
 .call-counter { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; background: #c94a2c; color: white; padding: 8px 16px; font-size: 13px; font-weight: 600; animation: ticket-pop 1.2s ease-out 3; }
-/* Mesa com pedido atrasado: fundo avermelhado. Chamada do garçom: âmbar com
-   anel pulsando. Se as duas coisas acontecem, fica o vermelho com o anel âmbar. */
-.waiter-table.late { background: #f9ddd3; border-color: #d4664a; box-shadow: 0 0 0 3px #d4664a2e; }
-.waiter-table.late h3 { color: #9c3420; }
+/* Mesa com pedido atrasado: selo vermelho e anel. Chamada do garçom: anel
+   âmbar pulsando. A cor de fundo vem do estado da mesa (panel-brand.css). */
+.waiter-table.late { box-shadow: 0 0 0 3px #d4664a2e; }
 .late-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; max-width: 100%; justify-content: center; padding: 3px 6px; border-radius: 7px; font-size: 11px; line-height: 1.15; font-weight: 700; color: #fff; background: #c2492d; }
-.waiter-table.calling { background: #fdedc2; border-color: #d99a17; border-width: 2px; animation: call-pulse 1.6s ease-in-out infinite; }
-.waiter-table.calling h3 { color: #7a5106; }
-.waiter-table.late.calling { background: #f9ddd3; }
+.waiter-table.calling { animation: call-pulse 1.6s ease-in-out infinite; }
 .call-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; max-width: 100%; justify-content: center; padding: 3px 6px; border-radius: 7px; font-size: 11px; line-height: 1.15; font-weight: 700; color: #4a3203; background: #f5c242; }
 @keyframes call-pulse { 0%, 100% { box-shadow: 0 0 0 3px #d99a1740; } 50% { box-shadow: 0 0 0 7px #d99a1700; } }
 @media (prefers-reduced-motion: reduce) { .waiter-table.calling { animation: none; box-shadow: 0 0 0 4px #d99a1755; } }
@@ -459,3 +456,4 @@
 .operation-tools { flex-wrap: wrap; row-gap: 8px; }
 /* Títulos da tela de entrada podem quebrar linha: as traduções são mais longas. */
 .pin-screen h1 { white-space: normal; text-wrap: balance; }
+
