@@ -53,7 +53,7 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 ## Decisões
 
 - **Supabase:** projeto na nuvem `yekmailbymutimhmddzx`. A máquina não tem Docker, então não há Supabase local.
-- **Vercel:** `nutrivox/cardapio-digital` (equipe) e `nutrivox/cardapio-cliente` (cliente), funções em São Paulo, variáveis configuradas, deploy pela pasta local. Sem commit/push automático.
+- **Vercel:** `nutrivox/cardapio-digital` (equipe) e `nutrivox/cardapio-cliente` (cliente), funções em São Paulo, variáveis configuradas. **Desde 2026-11-12 os dois projetos estão ligados ao GitHub** (`kaythejoker/CardapioDigital`, branch `main`): cada push na `main` publica os dois sozinhos, então não faça mais deploy pela pasta local. Commit e push só quando o usuário pedir, porque push na `main` vai direto para produção.
 - **Equipe:** o usuário escolheu senha inicial por enquanto; SMTP e entrega de convites por e-mail ficam adiados. Senha demo somente no `.env.local` ignorado.
 - **Perguntas em aberto da spec** (marca do Felipe, bar separado da cozinha, taxa de 10%, mais de uma comanda por mesa, acesso do garçom, quem monta o cardápio, domínio): por enquanto seguimos o modelo de dados do Prompt 1. Quando o Felipe responder, os ajustes entram como migrations novas.
 
