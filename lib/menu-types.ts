@@ -27,6 +27,8 @@ export type MenuItem = Availability & {
   photo_url: string | null;
   prep_minutes: number;
   featured: boolean;
+  /** "Combina com": até 3 itens sugeridos junto com este (upsell). */
+  pairs?: string[];
   /** Unidades restantes quando o item controla estoque; null quando não controla. */
   stock_left?: number | null;
   translations?: Translations;
@@ -35,6 +37,8 @@ export type MenuItem = Availability & {
 export type MenuCategory = Availability & {
   id: string;
   name: string;
+  /** Itens desta categoria são sugeridos quando o cliente pede a conta. */
+  suggest_at_bill?: boolean;
   translations?: Translations;
 };
 export type MenuData = {

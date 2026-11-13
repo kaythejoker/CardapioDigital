@@ -21,3 +21,39 @@ Lembrete do usuário: o PIN só é pedido quando o cliente já montou o carrinho
 ## Verificação
 
 Typecheck, lint, 30 testes unitários e build. Telas conferidas numa prévia local com os dados reais do cardápio do Arroba (comanda, conta pedida, mesa paga, Salão com plural e divisão). O som não foi ouvido aqui: conferir no próximo teste em produção.
+
+# Pedidos dos sócios depois da publicação (13/11/2026)
+
+Lista recebida em 13/11. O usuário aprovou as propostas no mesmo dia ("implementa tudo") e elas foram implementadas em seguida (ver "Como ficou" no fim).
+
+**Ordem de publicação:** primeiro a migration `20261113120000_upsell_sobremesa_financeiro.sql` no Supabase de produção, depois o deploy pela Vercel CLI nos dois projetos. Sem a migration, o cardápio e os painéis pedem colunas que ainda não existem (`pairs`, `suggest_at_bill`) e deixam de carregar.
+
+1. **Upsell (casar vendas: "cerveja que combina com tal porção")**
+   - Hoje: não existe. O cardápio só tem "Destaques da casa".
+   - Proposta: no gestor, cada prato ganha o campo "Combina com" (escolher até 3 itens). No detalhe do prato e logo depois de adicionar ao carrinho, o cliente vê "Combina com…" com botão de adicionar. Precisa de migration nova (tabela de pares de itens).
+2. **Sugestão de sobremesa ao pedir a conta**
+   - Hoje: "Pedir a conta" só avisa o garçom.
+   - Proposta: ao tocar em "Pedir a conta", antes de confirmar, aparece "Que tal uma sobremesa?" com os itens da categoria marcada como sobremesa (o gestor escolhe a categoria). O cliente pode pedir ou seguir para a conta.
+3. **Taxa de 10% só no fechamento**
+   - Hoje: o celular mostra "Sua parte" já com a taxa e "Total da mesa … • inclui 10% de serviço" desde o primeiro pedido.
+   - Proposta: enquanto a mesa está aberta, o cliente vê só o consumo. A taxa aparece quando ele pede a conta (ou o garçom inicia o fechamento) e no Salão, na hora de registrar o pagamento. O cálculo no banco não muda.
+4. **Financeiro só com comandas pagas**
+   - Hoje: "Vendido hoje" soma todos os pedidos do dia, mesmo de mesas abertas. "Recebido hoje" já soma só pagamentos.
+   - Proposta: "Vendido hoje" passa a contar só comandas fechadas. Os pedidos de mesas abertas aparecem num número separado, "Em aberto agora", para não sumir do controle.
+5. **Cabeçalho maior e em negrito**
+   - Hoje: o nome do restaurante no topo do cardápio tem 38 px (45 px no tablet), peso 650.
+   - Proposta: nome em negrito (peso 800), cerca de 44 px no celular, com sombra leve para ler melhor sobre a foto. Os títulos das categorias também ficam mais fortes.
+6. **Logo do Arroba com mais destaque**
+   - Hoje: a logo aparece com 40 px acima do nome.
+   - Proposta: logo com cerca de 88 px, num fundo claro arredondado, e banner um pouco mais alto.
+
+## Como ficou (13/11/2026)
+
+1. **Combina com** — coluna `menu_items.pairs` (até 3 itens; um gatilho tira o próprio prato, os repetidos e os itens de outro restaurante). No gestor, editor do item → "Combina com" (3 listas). No celular, depois de pôr um prato novo no carrinho, abre "Combina com {prato}" com botão "Adicionar" (item com escolha obrigatória abre o detalhe). Item bloqueado, fora do horário ou sem estoque não é sugerido.
+2. **Sobremesa** — coluna `categories.suggest_at_bill`, marcada no gestor na linha da categoria ("Sugerir ao pedir a conta"). Ao tocar em "Pedir a conta" (comanda ou "Chamar garçom"), aparece "Que tal uma sobremesa antes de fechar?" uma vez por visita: "Adicionar" põe no carrinho e mostra "Ver carrinho e pedir"; "Não, quero a conta" avisa o garçom. Sem categoria marcada, segue direto como antes. **Falta o gestor do Arroba marcar a categoria de sobremesas.**
+3. **Taxa só no fechamento** — com a mesa aberta, "Total da mesa" mostra só o consumo. Depois que alguém pede a conta (ou já houve pagamento), mostra o total com "com 10% de serviço (R$ …)". O banco e o Salão não mudam.
+4. **Financeiro** — "Vendido hoje" soma o consumo das comandas fechadas hoje; o detalhe mostra quantas e quanto está em mesas abertas. O "Fechar o dia" grava o vendido do mesmo jeito (`close_day`).
+5. **Cabeçalho** — nome do restaurante em peso 800, 44 px no celular (54 px no tablet), com sombra sobre a foto; títulos das categorias em negrito.
+6. **Logo** — 88 px (108 px no tablet) num fundo claro arredondado; o banner cresce para caber.
+
+Verificação: typecheck, lint, 30 testes unitários, build e `npm run db:check` com 325 verificações (inclui limpeza do "Combina com", limite de 3, revenda editando e fechamento do dia sem contar mesa aberta). As telas novas não foram vistas no navegador: este PC não tem `.env.local`.

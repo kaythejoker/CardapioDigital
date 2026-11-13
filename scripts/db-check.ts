@@ -1106,6 +1106,22 @@ async function main() {
     check("revenda fecha comanda sem consumo", (await fails("update tabs set status='closed' where id=$1", [opened.rows[0]?.id])) === null);
   });
 
+  // Pedidos dos sócios (13/11): "Combina com", sobremesa ao pedir a conta e
+  // fechamento do dia só com comandas fechadas.
+  const [pairA, pairB, pairC, pairD, pairE] = (await db.query<{ id: string }>("select id from menu_items where restaurant_id=$1 order by name limit 5", [arroba])).rows.map((r) => r.id);
+  const brasaItem = (await db.query<{ id: string }>("select id from menu_items where restaurant_id=$1 limit 1", [BRASA])).rows[0].id;
+  await db.query("update menu_items set pairs=$2::uuid[] where id=$1", [pairA, [pairA, pairB, brasaItem, pairB, pairC]]);
+  const cleaned = (await db.query<{ pairs: string[] }>("select pairs from menu_items where id=$1", [pairA])).rows[0].pairs;
+  check("combina com: tira o próprio prato, repetidos e itens de outro restaurante", JSON.stringify(cleaned) === JSON.stringify([pairB, pairC]));
+  check("combina com: no máximo 3 itens", (await fails("update menu_items set pairs=$2::uuid[] where id=$1", [pairE, [pairA, pairB, pairC, pairD]])) !== null);
+  check("categoria nasce sem sugestão na conta", (await count("select 1 from categories where restaurant_id=$1 and suggest_at_bill", [arroba])) === 0);
+  await asUser(users.revenda, async () => {
+    check("revenda edita combina com do Arroba", (await fails("update menu_items set pairs=$2::uuid[] where id=$1", [pairB, [pairA]])) === null);
+    check("revenda marca categoria de sobremesa", (await fails("update categories set suggest_at_bill=true where restaurant_id=$1 and position=0", [arroba])) === null);
+    const closure = await db.query<{ r: { totals: { items_cents: number } } }>("select public.close_day($1, (now() at time zone 'America/Sao_Paulo')::date) as r", [arroba]);
+    check("fechamento do dia não conta pedido de mesa aberta como vendido", closure.rows[0].r.totals.items_cents === 0);
+  });
+
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTudo certo.");
   process.exitCode = failures ? 1 : 0;
 }

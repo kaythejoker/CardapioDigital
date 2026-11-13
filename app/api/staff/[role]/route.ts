@@ -123,7 +123,7 @@ export async function GET(
     ctx.db
       .from("menu_items")
       .select(
-        "id,name,sold_out,sold_out_auto,active,price_cents,category_id,photo_url,prep_minutes,description,position,featured,stock_enabled,stock_quantity,low_stock_threshold,station,modifier_groups(*,modifiers(*))",
+        "id,name,sold_out,sold_out_auto,active,price_cents,category_id,photo_url,prep_minutes,description,position,featured,pairs,stock_enabled,stock_quantity,low_stock_threshold,station,modifier_groups(*,modifiers(*))",
       )
       .eq("restaurant_id", id)
       .order("position"),

@@ -6,9 +6,9 @@ import { tableUrl } from "@/lib/menu-origin";
 import { type MenuCategory, type MenuData, type MenuItem } from "@/lib/menu-types";
 import { type Features } from "@/lib/features";
 
-const CATEGORY_FIELDS = "id,name,position,translations,blocked,blocked_reason,available_from,available_until";
+const CATEGORY_FIELDS = "id,name,position,suggest_at_bill,translations,blocked,blocked_reason,available_from,available_until";
 const ITEM_FIELDS =
-  "id,category_id,name,description,price_cents,photo_url,prep_minutes,featured,position,translations,blocked,blocked_reason,available_from,available_until,modifier_groups(id,name,required,min_select,max_select,position,translations,modifiers(id,name,price_cents,position,translations))";
+  "id,category_id,name,description,price_cents,photo_url,prep_minutes,featured,pairs,position,translations,blocked,blocked_reason,available_from,available_until,modifier_groups(id,name,required,min_select,max_select,position,translations,modifiers(id,name,price_cents,position,translations))";
 
 type Row = MenuItem & { position?: number; stock_enabled?: boolean; stock_quantity?: number | null };
 

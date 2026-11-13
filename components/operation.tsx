@@ -113,7 +113,7 @@ export type OperationData = {
     low_stock_threshold?: number;
     station?: Station | null;
   })[];
-  categories: { id: string; name: string; position: number; active: boolean; station?: Station }[];
+  categories: { id: string; name: string; position: number; active: boolean; station?: Station; suggest_at_bill?: boolean }[];
   settings: QueueSettings;
   calls: StaffCall[];
   /** Lista de espera de hoje (só no salão, com o módulo ligado). */

@@ -195,6 +195,7 @@ const categoryCommand = z
     active: z.boolean(),
     position: z.number().int().min(0),
     station: stationSchema.default("cozinha"),
+    suggest_at_bill: z.boolean().default(false),
     translations: nameTranslations,
     ...blockFields,
   })
@@ -299,6 +300,7 @@ export async function POST(
       active: cmd.active,
       position: cmd.position,
       station: cmd.station,
+      suggest_at_bill: cmd.suggest_at_bill,
       translations: cmd.translations,
       blocked: cmd.blocked,
       blocked_reason: cmd.blocked ? cmd.blocked_reason : null,
@@ -318,12 +320,23 @@ export async function POST(
           .insert({ ...values, restaurant_id: id.data })
           .select("id")
           .single();
-  } else if (cmd.action === "item")
+  } else if (cmd.action === "item") {
+    const { pairs, ...data } = cmd.data;
     result = await ctx.db.rpc("save_menu_item", {
       p_restaurant: id.data,
       p_item: cmd.id ?? null,
-      p_data: cmd.data,
+      p_data: data,
     });
+    // "Combina com" fica fora da função do banco; o gatilho limpa a lista.
+    if (!result.error && result.data)
+      result = await ctx.db
+        .from("menu_items")
+        .update({ pairs })
+        .eq("id", result.data as string)
+        .eq("restaurant_id", id.data)
+        .select("id")
+        .single();
+  }
   else if (cmd.action === "toggle_item")
     result = await ctx.db
       .from("menu_items")

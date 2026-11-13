@@ -286,6 +286,7 @@ export function Manager({ initialRestaurant }: { initialRestaurant?: string }) {
             key={editor}
             restaurantId={id}
             categories={data.categories}
+            allItems={data.items.filter((i) => i.active)}
             item={data.items.find((i) => i.id === editor) ?? null}
             categoryStation={(categoryId) => data.categories.find((c) => c.id === categoryId)?.station ?? "cozinha"}
             languages={languagesOn}
@@ -739,7 +740,11 @@ function FinanceView({
   const byMethod = (Object.keys(PAYMENT_LABELS) as PaymentMethod[])
     .map((m) => ({ method: m, cents: activePayments.filter((p) => p.method === m).reduce((s, p) => s + p.amount_cents, 0) }))
     .filter((m) => m.cents > 0);
-  const sold = data.orders.filter((o) => o.status !== "cancelado").reduce((sum, o) => sum + o.total_cents, 0);
+  // Vendido = só comandas fechadas (pedido dos sócios, 13/11). Pedidos de mesas
+  // abertas aparecem à parte, como "em mesas abertas".
+  const sold = finance.closed_tabs.reduce((sum, t) => sum + (t.totals?.items_cents ?? 0), 0);
+  const openTabIds = new Set(data.tabs.map((t) => t.id));
+  const openCents = data.orders.filter((o) => o.status !== "cancelado" && openTabIds.has(o.tab_id)).reduce((sum, o) => sum + o.total_cents, 0);
   const cancelled = data.orders.flatMap((o) => o.order_items).filter((i) => i.cancelled_at).reduce((sum, i) => sum + i.unit_price_cents * i.quantity, 0);
   const fees = finance.closed_tabs.reduce((sum, t) => sum + (t.totals?.fee_cents ?? 0), 0);
   const discounts = finance.closed_tabs.reduce((sum, t) => sum + t.discount_cents, 0);
@@ -750,7 +755,7 @@ function FinanceView({
   const methods = (list: { method: string; cents: number }[], sep: string) =>
     list.map((m) => `${PAYMENT_LABELS[m.method as PaymentMethod] ? t(PAYMENT_LABELS[m.method as PaymentMethod]) : m.method} ${money(m.cents)}`).join(sep);
   const stats = [
-    { label: t("Vendido hoje"), value: money(sold), detail: t("{n} pedidos", { n: data.orders.filter((o) => o.status !== "cancelado").length }), icon: ClipboardList },
+    { label: t("Vendido hoje"), value: money(sold), detail: t("{n} comandas fechadas • {value} em mesas abertas", { n: finance.closed_tabs.length, value: money(openCents) }), icon: ClipboardList },
     { label: t("Recebido hoje"), value: money(received), detail: methods(byMethod, " • ") || t("Nenhum pagamento"), icon: Banknote, green: true },
     { label: t("Taxa de serviço"), value: money(fees), detail: t("Nas comandas fechadas hoje"), icon: Users },
     { label: t("Descontos e cancelados"), value: money(discounts + cancelled), detail: t("{discount} de desconto • {cancelled} cancelados", { discount: money(discounts), cancelled: money(cancelled) }), icon: Bell },
@@ -1287,6 +1292,7 @@ function CategoryForm({
           active: values.get("active") === "on",
           position: c.position,
           station: values.get("station") || "cozinha",
+          suggest_at_bill: values.get("suggest_at_bill") === "on",
           ...(languages ? { translations } : { translations: c.translations ?? {} }),
           ...(blocks
             ? availability
@@ -1317,6 +1323,10 @@ function CategoryForm({
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="active" defaultChecked={c.active} key={String(c.active)} />
           {t("Ativa")}
+        </label>
+        <label className="flex items-center gap-2 text-sm" title={t("Os itens desta categoria aparecem como sugestão quando o cliente pede a conta.")}>
+          <input type="checkbox" name="suggest_at_bill" defaultChecked={c.suggest_at_bill ?? false} key={`bill-${c.suggest_at_bill}`} />
+          {t("Sugerir ao pedir a conta")}
         </label>
         {extras && (
           <button type="button" className="flex items-center gap-1 text-sm underline" aria-expanded={more} onClick={() => setMore((v) => !v)}>

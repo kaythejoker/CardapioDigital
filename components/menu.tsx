@@ -234,6 +234,12 @@ export function Menu({
   const [me, setMe] = useState<string | null>(null);
   const [estimate, setEstimate] = useState(0);
   const [callSheet, setCallSheet] = useState(false);
+  // Sugestões (pedido dos sócios, 13/11): "Combina com" depois de pôr um prato
+  // no carrinho e sobremesa quando o cliente pede a conta (uma vez por visita).
+  const [pairFor, setPairFor] = useState<MenuItem | null>(null);
+  const [dessertSheet, setDessertSheet] = useState(false);
+  const [added, setAdded] = useState<string[]>([]);
+  const dessertOffered = useRef(false);
   const [callNote, setCallNote] = useState("");
   const [callDone, setCallDone] = useState<ServiceCallKind | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
@@ -418,6 +424,35 @@ export function Menu({
     setNote(line?.note ?? "");
     setError("");
   };
+  const orderable = (i: MenuItem | undefined): i is MenuItem => !!i && !blockedWhy(i) && i.stock_left !== 0;
+  const pairOptions = (item: MenuItem) =>
+    (item.pairs ?? []).map((id) => menu?.items.find((i) => i.id === id)).filter(orderable);
+  const dessertOptions = () => {
+    const categories = new Set((menu?.categories ?? []).filter((c) => c.suggest_at_bill).map((c) => c.id));
+    return (menu?.items ?? [])
+      .filter((i) => categories.has(i.category_id) && orderable(i))
+      .toSorted((a, b) => Number(b.featured) - Number(a.featured))
+      .slice(0, 6);
+  };
+  /** Põe 1 unidade no carrinho; item com escolha obrigatória abre o detalhe. */
+  const quickAdd = (item: MenuItem) => {
+    if (item.modifier_groups.some((g) => g.min_select > 0)) {
+      setPairFor(null);
+      setDessertSheet(false);
+      openItem(item);
+      return;
+    }
+    setCart((previous) => [
+      ...previous,
+      { key: crypto.randomUUID(), item_id: item.id, quantity: 1, note: "", modifier_ids: [], shared: false },
+    ]);
+    setAdded((list) => [...list, item.id]);
+  };
+  const closePairs = () => {
+    setPairFor(null);
+    setAdded([]);
+    if (!menu?.authorized) setScreen("pin");
+  };
   const add = () => {
     if (!selected) return;
     for (const g of selected.modifier_groups) {
@@ -444,6 +479,11 @@ export function Menu({
     );
     pendingRequest.current = null;
     setSelected(null);
+    if (!editing && pairOptions(selected).length) {
+      setAdded([]);
+      setPairFor(selected);
+      return;
+    }
     if (!menu?.authorized) setScreen("pin");
   };
   if (!menu)
@@ -485,6 +525,8 @@ export function Menu({
     "rounded-[14px] bg-primary px-5 py-4 font-semibold text-primary-foreground disabled:opacity-50";
   const myCalls = (menu.calls ?? []).filter((c) => c.mine);
   const billAsked = myCalls.some((c) => c.kind === "conta");
+  // Mesa em fechamento: alguém pediu a conta ou já houve pagamento.
+  const closing = (menu.calls ?? []).some((c) => c.kind === "conta") || (totals?.paid_cents ?? 0) > 0;
   const callWaiter = (kind: ServiceCallKind, note?: string) =>
     run(async () => {
       await post({ action: "call", kind, note });
@@ -493,6 +535,16 @@ export function Menu({
       setCallDone(kind);
       await refresh();
     });
+  const askBill = () => {
+    if (!dessertOffered.current && !orderingStopped && dessertOptions().length) {
+      dessertOffered.current = true;
+      setCallSheet(false);
+      setAdded([]);
+      setDessertSheet(true);
+      return;
+    }
+    void callWaiter("conta");
+  };
   const CALL_DONE: Record<ServiceCallKind, string> = {
     garcom: t("Avisamos o garçom. Ele vem até a mesa."),
     conta: t("Avisamos o garçom. Ele vem até a mesa para fechar."),
@@ -534,9 +586,9 @@ export function Menu({
                 <MenuPhoto slug={slug}
                   src={menu.restaurant.logo_url}
                   alt={t("Logo {name}", { name: menu.restaurant.name })}
-                  width={56}
-                  height={56}
-                  className="mb-3 rounded-xl object-contain"
+                  width={176}
+                  height={176}
+                  className="menu-hero-logo mb-3 rounded-xl object-contain"
                 />
               )}
               <h1 className="font-heading text-4xl font-semibold">
@@ -817,7 +869,7 @@ export function Menu({
                   <Bell size={20} />
                   <span><b>{t("Chamar garçom")}</b><small>{t("Alguém vem até a mesa.")}</small></span>
                 </button>
-                <button className="call-option" disabled={busy} onClick={() => void callWaiter("conta")}>
+                <button className="call-option" disabled={busy} onClick={askBill}>
                   <Check size={20} />
                   <span><b>{t("Pedir a conta")}</b><small>{t("Avisa que a mesa quer fechar. O garçom traz a conta.")}</small></span>
                 </button>
@@ -1262,16 +1314,56 @@ export function Menu({
                   : t("Atualizado há {n} s", { n: Math.round((now - updatedAt) / 1000) })}
           </p>
           {billAsked && <p className="tab-bill-note" role="status">{CALL_DONE.conta}</p>}<div className="tab-total-bar"><div><span>{t("Sua parte")}</span><b>{money(people.find((p) => p.id === me)?.due_cents ?? 0)}</b><small>
-            {t("Total da mesa: {value}", { value: money(totals?.due_cents ?? split.total_cents) })}
-            {totals && totals.fee_cents > 0 && ` • ${t("inclui {n}% de serviço", { n: totals.fee_percent })}`}
+            {/* Taxa de serviço só aparece no fechamento (pedido dos sócios, 13/11):
+                com a mesa aberta o cliente vê só o consumo. */}
+            {t("Total da mesa: {value}", { value: money(totals ? (closing ? totals.due_cents : totals.due_cents - totals.fee_cents) : split.total_cents) })}
+            {closing && totals && totals.fee_cents > 0 && ` • ${t("com {n}% de serviço ({value})", { n: totals.fee_percent, value: money(totals.fee_cents) })}`}
             {totals && totals.discount_cents > 0 && ` • ${t("desconto de {value}", { value: money(totals.discount_cents) })}`}
             {totals && totals.paid_cents > 0 && ` • ${t("pago {value}", { value: money(totals.paid_cents) })}`}
           </small></div><div className="tab-total-actions"><button
             className="tab-bill"
             disabled={busy || billAsked || !menu.open || (!!totals && totals.due_cents > 0 && totals.balance_cents <= 0)}
-            onClick={() => void callWaiter("conta")}
-          ><ReceiptText size={17}/> {billAsked ? t("Conta pedida") : t("Pedir a conta")}</button><button onClick={back}><Plus size={17}/> {t("Pedir mais")}</button></div></div>
+            onClick={askBill}
+          ><ReceiptText size={17}/> {billAsked ? t("Conta pedida") : t("Pedir a conta")}</button><button onClick={back}><Plus size={17}/> {t("Pedir mais")}</button></div></div>
         </section>
+      )}
+      {(pairFor || dessertSheet) && (
+        <div className="call-sheet-backdrop" role="dialog" aria-modal="true" aria-label={pairFor ? t("Combina com {name}", { name: pairFor.name }) : t("Sobremesa")}>
+          <section className="call-sheet pair-sheet">
+            <header>
+              <h2 className="font-heading text-2xl">
+                {pairFor ? t("Combina com {name}", { name: pairFor.name }) : t("Que tal uma sobremesa antes de fechar?")}
+              </h2>
+              <button aria-label={t("Fechar")} onClick={() => (pairFor ? closePairs() : setDessertSheet(false))}>
+                <X />
+              </button>
+            </header>
+            {(pairFor ? pairOptions(pairFor) : dessertOptions()).map((i) => {
+              const done = added.includes(i.id);
+              return (
+                <div className="pair-option" key={i.id}>
+                  {i.photo_url && <MenuPhoto slug={slug} src={i.photo_url} alt={i.name} width={112} height={112} />}
+                  <div>
+                    <b>{i.name}</b>
+                    <small>{money(i.price_cents)}</small>
+                  </div>
+                  <button disabled={done} onClick={() => quickAdd(i)}>
+                    {done ? <><Check size={14} /> {t("Adicionado")}</> : <><Plus size={14} /> {t("Adicionar")}</>}
+                  </button>
+                </div>
+              );
+            })}
+            <div className="pair-sheet-actions">
+              {pairFor ? (
+                <button className="primary" onClick={closePairs}>{added.length ? t("Continuar") : t("Agora não")}</button>
+              ) : added.length ? (
+                <button className="primary" onClick={() => { setDessertSheet(false); setAdded([]); setScreen("cart"); }}>{t("Ver carrinho e pedir")}</button>
+              ) : (
+                <button className="primary" disabled={busy} onClick={() => { setDessertSheet(false); void callWaiter("conta"); }}>{t("Não, quero a conta")}</button>
+              )}
+            </div>
+          </section>
+        </div>
       )}
       {selected && (
         <div

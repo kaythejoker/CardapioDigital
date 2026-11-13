@@ -443,6 +443,20 @@ body:has(.panel-theme) :is(.tab-fab) {background:color-mix(in srgb,var(--brand) 
 body:has(.panel-theme) :is(.tab-total-bar .tab-bill) {background:color-mix(in srgb,var(--brand) 91%,#133971);color:#fff;border-color:transparent
 }
 body:has(.panel-theme) :is(.tab-bill-note) {background:#e5e9f0;color:#334f7a
+}
+body:has(.panel-theme) :is(.customer-screen .menu-hero h1) {text-shadow:0 2px 14px #0009
+}
+body:has(.panel-theme) :is(.menu-hero>div.relative>img.menu-hero-logo) {background:#fbfcfd;box-shadow:0 6px 18px #0005
+}
+body:has(.panel-theme) :is(.pair-option) {background:#fbfcfd;border:1px solid #dadee5;box-shadow:0 3px 9px #263f6409
+}
+body:has(.panel-theme) :is(.pair-option small) {color:var(--brand)
+}
+body:has(.panel-theme) :is(.pair-option>button) {background:color-mix(in srgb,var(--brand) 91%,#133971);color:#fff
+}
+body:has(.panel-theme) :is(.pair-option>button:disabled) {background:#dee2e9;color:#525b68
+}
+body:has(.panel-theme) :is(.pair-sheet-actions .primary) {background:color-mix(in srgb,var(--brand) 91%,#133971);color:#fff
 }/*  app/panels.css  */
 body:has(.panel-theme) :is(.admin-layout) {
   --panel-ink: #1f2937;

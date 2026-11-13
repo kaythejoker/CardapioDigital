@@ -84,6 +84,7 @@ export const itemSchema = z.object({
   prep_minutes: z.number().int().min(1).max(240),
   active: z.boolean(),
   featured: z.boolean(),
+  pairs: z.array(z.uuid()).max(3).default([]),
   position: z.number().int().min(0).default(0),
   stock_enabled: z.boolean().default(false),
   stock_quantity: z.number().int().min(0).max(100_000).nullable().default(null),

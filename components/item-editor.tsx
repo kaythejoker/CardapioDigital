@@ -155,9 +155,12 @@ export function ItemEditor({
   categoryStation,
   languages = true,
   blocks = true,
+  allItems = [],
 }: {
   restaurantId: string;
   categories: { id: string; name: string }[];
+  /** Itens do cardápio para escolher em "Combina com". */
+  allItems?: { id: string; name: string; category_id: string }[];
   item:
     | (MenuItem & {
         active: boolean;
@@ -188,6 +191,7 @@ export function ItemEditor({
           prep_minutes: item.prep_minutes,
           active: item.active,
           featured: item.featured,
+          pairs: item.pairs ?? [],
           position: item.position,
           stock_enabled: item.stock_enabled ?? false,
           stock_quantity: item.stock_quantity ?? null,
@@ -226,6 +230,7 @@ export function ItemEditor({
           prep_minutes: 10,
           active: true,
           featured: false,
+          pairs: [],
           position: 0,
           stock_enabled: false,
           stock_quantity: null,
@@ -406,6 +411,40 @@ export function ItemEditor({
             {t("Destaque da casa")}
           </label>
         </div>
+        <fieldset className="rounded-2xl border p-4">
+          <legend className="px-2 font-semibold">{t("Combina com")}</legend>
+          <p className="mb-3 text-sm text-muted-foreground">
+            {t("Até 3 itens sugeridos ao cliente junto com este (ex.: a cerveja que combina com a porção).")}
+          </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[0, 1, 2].map((slot) => {
+              const pairs = value.pairs ?? [];
+              return (
+                <select
+                  key={slot}
+                  aria-label={t("Sugestão {n}", { n: slot + 1 })}
+                  className={fieldClass}
+                  value={pairs[slot] ?? ""}
+                  onChange={(e) => {
+                    const next = [...pairs];
+                    next[slot] = e.target.value;
+                    set("pairs", [...new Set(next.filter(Boolean))]);
+                  }}
+                >
+                  <option value="">{t("Nenhuma")}</option>
+                  {categories.map((c) => {
+                    const options = allItems.filter((i) => i.category_id === c.id && i.id !== item?.id && (i.id === pairs[slot] || !pairs.includes(i.id)));
+                    return options.length ? (
+                      <optgroup key={c.id} label={c.name}>
+                        {options.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                      </optgroup>
+                    ) : null;
+                  })}
+                </select>
+              );
+            })}
+          </div>
+        </fieldset>
         {blocks && (
           <fieldset className="rounded-2xl border p-4">
             <legend className="px-2 font-semibold">{t("Disponibilidade")}</legend>
