@@ -23,9 +23,15 @@ SaaS white label de cardápio digital com pedido por mesa: o cliente escaneia o 
 - Toda a interface e a comunicação com o usuário são em **português do Brasil**. Isso vale para **tudo o que aparece no CLI**: respostas, avisos de andamento, perguntas, opções de escolha, lista de tarefas e caixa de próximo passo. Nunca escrever em inglês com o usuário, nem em mensagem curta; ele já pediu isso muitas vezes.
 - Valores em centavos (inteiros), moeda BRL, fuso `America/Sao_Paulo`.
 
+## Piloto Pastel do Chef (2026-11-21)
+
+- **Primeiro restaurante real passou a ser o Pastel do Chef** (`pastel-do-chef`, 2 mesas), no lugar do Arroba. Cardápio, fotos, logo e cores copiados do delivery da casa (webleva.com/pasteldochef) em `scripts/pilot/pasteldochef/`. Restaurante **já criado no Supabase de produção** (`npm run pilot:pastel`, não precisa rodar de novo). Links e pendências em [docs/piloto-pastel-publicacao.md](docs/piloto-pastel-publicacao.md).
+- `scripts/setup-pilot.ts` implanta qualquer piloto (`pilot:arroba`, `pilot:pastel`), com fotos, banner, "Combina com" e sobremesa na conta.
+
 ## Piloto Arroba Experience (2026-11-12)
 
-- **Primeiro restaurante real:** Arroba Experience (`arroba-experience`, 2 mesas). Mapa do salão com as cores dos sócios e script `npm run pilot:arroba` **publicados em 2026-11-12**: restaurante criado no Supabase de produção (`npm run pilot:arroba`, já rodado: não precisa rodar de novo) e deploy nos dois projetos Vercel. Pendências com os sócios e teste em produção em [docs/piloto-arroba-publicacao.md](docs/piloto-arroba-publicacao.md).
+- **Desativado em 21/11/2026** (status `inactive`, sem domínio próprio); dados mantidos.
+- **Primeiro restaurante real (até 21/11):** Arroba Experience (`arroba-experience`, 2 mesas). Mapa do salão com as cores dos sócios e script `npm run pilot:arroba` **publicados em 2026-11-12**: restaurante criado no Supabase de produção (`npm run pilot:arroba`, já rodado: não precisa rodar de novo) e deploy nos dois projetos Vercel. Pendências com os sócios e teste em produção em [docs/piloto-arroba-publicacao.md](docs/piloto-arroba-publicacao.md).
 
 ## Estado atual (2026-10-13)
 

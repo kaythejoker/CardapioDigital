@@ -10,6 +10,7 @@ import { join } from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { ARROBA, ARROBA_MENU } from "./pilot/arroba-menu";
+import { PASTEL, PASTEL_MENU } from "./pilot/pasteldochef/menu";
 
 const root = join(import.meta.dirname, "..");
 const migrationsDir = join(root, "supabase", "migrations");
@@ -1121,6 +1122,49 @@ async function main() {
     const closure = await db.query<{ r: { totals: { items_cents: number } } }>("select public.close_day($1, (now() at time zone 'America/Sao_Paulo')::date) as r", [arroba]);
     check("fechamento do dia não conta pedido de mesa aberta como vendido", closure.rows[0].r.totals.items_cents === 0);
   });
+
+  // Cardápio do piloto Pastel do Chef (21/11): tamanhos, combos e "Combina com".
+  const pastel = (await db.query<{ id: string }>(
+    "insert into restaurants(reseller_id,name,slug,primary_color,background_color) values($1,$2,$3,$4,$5) returning id",
+    [RESELLER, PASTEL.name, PASTEL.slug, PASTEL.primary_color, PASTEL.background_color])).rows[0].id;
+  const pastelIds = new Map<string, string>();
+  for (const [cPos, category] of PASTEL_MENU.entries()) {
+    const cid = (await db.query<{ id: string }>("insert into categories(restaurant_id,name,position,suggest_at_bill) values($1,$2,$3,$4) returning id", [pastel, category.name, cPos, !!category.suggestAtBill])).rows[0].id;
+    for (const [iPos, item] of category.items.entries()) {
+      const iid = (await db.query<{ id: string }>(
+        "insert into menu_items(restaurant_id,category_id,name,description,price_cents,photo_url,prep_minutes,featured,position) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id",
+        [pastel, cid, item.name, item.description ?? null, item.price, item.photo ? `https://exemplo.test/${item.photo}` : null, item.prep, !!item.featured, iPos])).rows[0].id;
+      pastelIds.set(item.name, iid);
+      for (const [gPos, g] of (item.groups ?? []).entries()) {
+        const gid = (await db.query<{ id: string }>("insert into modifier_groups(menu_item_id,name,required,min_select,max_select,position) values($1,$2,$3,$4,$5,$6) returning id", [iid, g.name, g.required, g.min, g.max, gPos])).rows[0].id;
+        for (const [mPos, [name, price]] of g.options.entries())
+          await db.query("insert into modifiers(group_id,name,price_cents,position) values($1,$2,$3,$4)", [gid, name, price, mPos]);
+      }
+    }
+  }
+  for (const item of PASTEL_MENU.flatMap((c) => c.items))
+    if (item.pairs) await db.query("update menu_items set pairs=$2::uuid[] where id=$1", [pastelIds.get(item.name), item.pairs.map((n) => pastelIds.get(n))]);
+  check("cardápio do Pastel do Chef entra completo no banco", pastelIds.size === PASTEL_MENU.reduce((n, c) => n + c.items.length, 0));
+  check("pastéis salgados combinam com 3 bebidas", (await count("select 1 from menu_items where restaurant_id=$1 and cardinality(pairs)=3", [pastel])) === PASTEL_MENU.flatMap((c) => c.items).filter((i) => i.pairs?.length === 3).length);
+  check("pastéis doces sugeridos ao pedir a conta", (await count("select 1 from categories where restaurant_id=$1 and suggest_at_bill", [pastel])) === 2);
+  const pastelTable = (await db.query<{ id: string; qr_token: string }>("insert into tables(restaurant_id,label) values($1,'1') returning id,qr_token", [pastel])).rows[0];
+  await db.query("insert into tabs(restaurant_id,table_id,pin) values($1,$2,'6060')", [pastel, pastelTable.id]);
+  await db.query("select public.verify_table_pin($1,$2,'6060','dev-pastel','hash-pastel','Teste')", [PASTEL.slug, pastelTable.qr_token]);
+  const mod = async (item: string, group: string, option: string) =>
+    (await db.query<{ id: string }>(
+      "select m.id from modifiers m join modifier_groups g on g.id=m.group_id where g.menu_item_id=$1 and g.name=$2 and m.name=$3", [pastelIds.get(item), group, option])).rows[0].id;
+  await db.query(
+    "select public.submit_table_order($1,$2,'hash-pastel','b0000000-0000-4000-8000-0000000000b1',$3::jsonb)",
+    [PASTEL.slug, pastelTable.qr_token, JSON.stringify([
+      // Pastelão 20cm (R$ 15,50) + molho verde (R$ 1,00)
+      { item_id: pastelIds.get("Pastel Carne com Bacon"), quantity: 1, note: "", modifier_ids: [await mod("Pastel Carne com Bacon", "Tamanho", "Pastelão 20cm"), await mod("Pastel Carne com Bacon", "Adicionais", "Molho verde")] },
+      // Combo R$ 15,00 + carne com bacon (R$ 1,00) + pizza (sem acréscimo)
+      { item_id: pastelIds.get("2 Pastéis + 1 Refri 200ml"), quantity: 1, note: "", modifier_ids: [await mod("2 Pastéis + 1 Refri 200ml", "Refri 200ml", "Guaraná"), await mod("2 Pastéis + 1 Refri 200ml", "1º pastel", "Carne com bacon"), await mod("2 Pastéis + 1 Refri 200ml", "2º pastel", "Pizza")] },
+    ])]);
+  check("pastelão carne com bacon + molho e combo de 2 somam R$ 32,50", (await count("select 1 from orders o join tabs t on t.id=o.tab_id where t.table_id=$1 and o.total_cents=3250", [pastelTable.id])) === 1);
+  check("combo sem os 2 sabores é recusado", (await fails(
+    "select public.submit_table_order($1,$2,'hash-pastel','b0000000-0000-4000-8000-0000000000b2',$3::jsonb)",
+    [PASTEL.slug, pastelTable.qr_token, JSON.stringify([{ item_id: pastelIds.get("2 Pastéis + 1 Refri 200ml"), quantity: 1, note: "", modifier_ids: [await mod("2 Pastéis + 1 Refri 200ml", "Refri 200ml", "Coca-Cola")] }])])) !== null);
 
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTudo certo.");
   process.exitCode = failures ? 1 : 0;

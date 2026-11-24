@@ -16,8 +16,17 @@ export type PilotItem = {
   prep: number;
   featured?: boolean;
   groups?: PilotModifierGroup[];
+  /** Arquivo da foto do item, relativo à pasta de fotos do piloto. */
+  photo?: string;
+  /** "Combina com": nomes de até 3 itens do mesmo cardápio. */
+  pairs?: string[];
 };
-export type PilotCategory = { name: string; items: PilotItem[] };
+export type PilotCategory = {
+  name: string;
+  items: PilotItem[];
+  /** Sugerir os itens desta categoria quando o cliente pede a conta. */
+  suggestAtBill?: boolean;
+};
 
 export const ARROBA = {
   name: "Arroba Experience",
